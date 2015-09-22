@@ -417,7 +417,7 @@ process_incoming_push_msg (struct context *c,
 #if P2MP_SERVER
   if (buf_string_compare_advance (&buf, "PUSH_REQUEST"))
     {
-      if (tls_authentication_status (c->c2.tls_multi, 0) == TLS_AUTHENTICATION_FAILED || c->c2.context_auth == CAS_FAILED)
+      if (tls_authentication_status (c->c2.tls_multi, 0) == TLS_AUTHENTICATION_FAILED || c->c2.context_auth == CAS_FAILED || c->c2.context_auth == CAS_PARTIAL)
 	{
 	  const char *client_reason = tls_client_reason (c->c2.tls_multi);
 	  send_auth_failed (c, client_reason);
