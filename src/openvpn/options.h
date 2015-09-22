@@ -636,6 +636,12 @@ struct options
 
 #define OPT_P_DEFAULT   (~(OPT_P_INSTANCE|OPT_P_PULL_MODE))
 
+#if P2MP_SERVER
+#define CLIENT_CONNECT_OPT_MASK (OPT_P_INSTANCE | OPT_P_INHERIT	| OPT_P_PUSH | \
+				 OPT_P_TIMER | OPT_P_CONFIG | OPT_P_ECHO | \
+				 OPT_P_COMP | OPT_P_SOCKFLAGS)
+#endif
+
 #if P2MP
 #define PULL_DEFINED(opt) ((opt)->pull)
 #if P2MP_SERVER
