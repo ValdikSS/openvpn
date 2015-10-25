@@ -37,6 +37,10 @@
 
 #ifdef WIN32
 
+#include <fwpmu.h>
+#include <fwpmtypes.h>
+#include <iphlpapi.h>
+
 #include "buffer.h"
 #include "error.h"
 #include "mtu.h"
@@ -55,6 +59,17 @@ static struct WSAData wsa_state; /* GLOBAL */
  * Should we call win32_pause() on program exit?
  */
 static bool pause_exit_enabled = false; /* GLOBAL */
+
+/*
+ * WFP firewall name.
+ */
+wchar_t * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
+
+/*
+ * WFP handle and GUID.
+ */
+static HANDLE m_hEngineHandle = NULL; /* GLOBAL */
+static GUID m_subLayerGUID; /* GLOBAL */
 
 /*
  * win32_signal is used to get input from the keyboard
@@ -1024,4 +1039,170 @@ win_get_tempdir()
   WideCharToMultiByte (CP_UTF8, 0, wtmpdir, -1, tmpdir, sizeof (tmpdir), NULL, NULL);
   return tmpdir;
 }
+
+
+bool
+win_wfp_init()
+{
+    ZeroMemory(&m_subLayerGUID, sizeof(GUID));
+    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
+    FWPM_SESSION0 session = {0};
+    RPC_STATUS rpcStatus = {0};
+    FWPM_SUBLAYER0 SubLayer = {0};
+
+    /* Add temporary filters which don't survive reboots or crashes. */
+    session.flags = FWPM_SESSION_FLAG_DYNAMIC;
+
+    dmsg (D_LOW, "Opening WFP engine");
+    dwFwAPiRetCode = FwpmEngineOpen0(NULL, RPC_C_AUTHN_WINNT, NULL, &session, &m_hEngineHandle);
+
+    if (dwFwAPiRetCode != ERROR_SUCCESS)
+    {
+        msg (M_NONFATAL, "Can't open WFP engine");
+        return false;
+    }
+
+    rpcStatus = UuidCreate(&SubLayer.subLayerKey);
+    if (rpcStatus != NO_ERROR)
+        return false;
+    CopyMemory(&m_subLayerGUID, &SubLayer.subLayerKey, sizeof(SubLayer.subLayerKey));
+
+    /* Populate packet filter layer information. */
+    SubLayer.displayData.name = FIREWALL_NAME;
+    SubLayer.displayData.description = FIREWALL_NAME;
+    SubLayer.flags = 0;
+    SubLayer.weight = 0x100;
+
+    /* Add packet filter to our interface. */
+    dmsg (D_LOW, "Adding WFP sublayer");
+    dwFwAPiRetCode = FwpmSubLayerAdd0(m_hEngineHandle, &SubLayer, NULL);
+    if (dwFwAPiRetCode != ERROR_SUCCESS)
+    {
+        msg (M_NONFATAL, "Can't add WFP sublayer");
+        return false;
+    }
+    return true;
+}
+
+bool
+win_wfp_uninit()
+{
+    dmsg (D_LOW, "Uninitializing WFP");
+    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
+    if (m_hEngineHandle) {
+        FwpmSubLayerDeleteByKey0(m_hEngineHandle, &m_subLayerGUID);
+        ZeroMemory(&m_subLayerGUID, sizeof(GUID));
+        FwpmEngineClose0(m_hEngineHandle);
+        m_hEngineHandle = NULL;
+    }
+    return true;
+}
+
+NET_LUID
+win_adapter_index_to_luid (const NET_IFINDEX index)
+{
+    NET_LUID tapluid;
+    NETIO_STATUS ret;
+    ret = ConvertInterfaceIndexToLuid(index, &tapluid);
+    if (ret == NO_ERROR)
+    {
+        dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
+        return tapluid;
+    }
+}
+
+bool
+win_wfp_add_filter (HANDLE engineHandle,
+                    const FWPM_FILTER0 *filter,
+                    PSECURITY_DESCRIPTOR sd,
+                    UINT64 *id)
+{
+    if (FwpmFilterAdd0(engineHandle, filter, sd, id) != ERROR_SUCCESS)
+    {
+        msg (M_NONFATAL, "Can't add WFP filter");
+        return false;
+    }
+    return true;
+}
+
+bool
+win_wfp_block_dns (NET_LUID tapluid)
+{
+    dmsg (D_LOW, "Blocking DNS using WFP");
+    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
+    UINT64 filterid;
+    WCHAR svchostpath[MAX_PATH];
+    FWP_BYTE_BLOB *svchostblob = NULL;
+
+    FWPM_FILTER0 Filter = {0};
+    FWPM_FILTER_CONDITION0 Condition[2] = {0};
+
+    /* Get system32 path. */
+    GetSystemDirectoryW(svchostpath, MAX_PATH);
+    /* Add svchost.exe to the path */
+    wcscat(svchostpath, L"\\svchost.exe");
+
+    if (FwpmGetAppIdFromFileName0(svchostpath, &svchostblob) != ERROR_SUCCESS)
+        return false;
+
+    /* Prepare filter. */
+    Filter.subLayerKey = m_subLayerGUID;
+    Filter.displayData.name = FIREWALL_NAME;
+    Filter.weight.type = FWP_EMPTY;
+    Filter.filterCondition = Condition;
+    Filter.numFilterConditions = 2;
+
+    /* First filter. Block IPv4 DNS requests from svchost.exe. */
+    Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+    Filter.action.type = FWP_ACTION_BLOCK;
+
+    Condition[0].fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
+    Condition[0].matchType = FWP_MATCH_EQUAL;
+    Condition[0].conditionValue.type = FWP_UINT16;
+    Condition[0].conditionValue.uint16 = 53;
+
+    Condition[1].fieldKey = FWPM_CONDITION_ALE_APP_ID;
+    Condition[1].matchType = FWP_MATCH_EQUAL;
+    Condition[1].conditionValue.type = FWP_BYTE_BLOB_TYPE;
+    Condition[1].conditionValue.byteBlob = svchostblob;
+
+    /* Add filter condition to our interface. */
+    if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
+        return false;
+    dmsg (D_LOW, "Filter (Block IPv4 DNS) added with ID=%I64d", filterid);
+
+    /* Second filter. Block IPv6 DNS requests from svchost.exe. */
+    Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+
+    /* Add filter condition to our interface. */
+    if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
+        return false;
+    dmsg (D_LOW, "Filter (Block IPv6 DNS) added with ID=%I64d", filterid);
+
+    /* Third filter. Permit all IPv4 traffic from TAP from svchost.exe. */
+    Filter.action.type = FWP_ACTION_PERMIT;
+
+    Condition[0].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
+    Condition[0].matchType = FWP_MATCH_EQUAL;
+    Condition[0].conditionValue.type = FWP_UINT64;
+
+    Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+    Condition[0].conditionValue.uint64 = &tapluid.Value;
+
+    /* Add filter condition to our interface. */
+    if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
+        return false;
+    dmsg (D_LOW, "Filter (Permit all IPv4 traffic from TAP) added with ID=%I64d", filterid);
+
+    /* Forth filter. Permit all IPv6 traffic from TAP. */
+    Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+
+    /* Add filter condition to our interface. */
+    if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
+        return false;
+    dmsg (D_LOW, "Filter (Permit all IPv6 traffic from TAP) added with ID=%I64d", filterid);
+
+    return true;
+}
+
 #endif
