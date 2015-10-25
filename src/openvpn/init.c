@@ -1468,6 +1468,22 @@ do_open_tun (struct context *c)
 		   "up",
 		   c->c2.es);
 
+#if defined(WIN32)
+      if (c->options.block_outside_dns)
+        if (c->options.tuntap_options.dns_len) {
+            if (!win_wfp_init())
+                msg (M_NONFATAL, "Initialising WFP failed!");
+            else
+            {
+                dmsg (D_LOW, "Blocking outside DNS");
+                if (!win_wfp_block_dns(win_adapter_index_to_luid(c->c1.tuntap->adapter_index)))
+                    msg (M_NONFATAL, "Blocking DNS failed!");
+            }
+        }
+        else
+            msg (M_NONFATAL, "Can't block outside DNS without configured DNS server");
+#endif
+
       /* possibly add routes */
       if ((route_order() == ROUTE_AFTER_TUN) && (!c->options.route_delay_defined))
 	do_route (&c->options, c->c1.route_list, c->c1.route_ipv6_list,
@@ -1595,6 +1611,14 @@ do_close_tun (struct context *c, bool force)
 					   c->sig->signal_text),
 		       "down",
 		       c->c2.es);
+
+#if defined(WIN32)
+            if (c->options.block_outside_dns && c->options.tuntap_options.dns_len)
+            {
+                if (!win_wfp_uninit())
+                    msg (M_NONFATAL, "Uninitialising WFP failed!");
+            }
+#endif
 
 	  /* actually close tun/tap device based on --down-pre flag */
 	  if (c->options.down_pre)
