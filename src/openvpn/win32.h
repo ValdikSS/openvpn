@@ -27,8 +27,10 @@
 #define OPENVPN_WIN32_H
 
 #include "mtu.h"
+#if _WIN32_WINNT >= 0x0600
 #include <initguid.h>
 #include <fwpmtypes.h>
+#endif
 
 /* location of executables */
 #define SYS_PATH_ENV_VAR_NAME "SystemRoot"  /* environmental variable name that normally contains the system path */
@@ -270,17 +272,17 @@ void fork_to_self (const char *cmdline);
 /* Find temporary directory */
 const char *win_get_tempdir();
 
-bool win_wfp_block_dns(NET_LUID tapluid);
-NET_LUID win_adapter_index_to_luid(const NET_IFINDEX index);
+/* Convert a string from UTF-8 to UCS-2 */
+WCHAR *wide_string (const char* utf8, struct gc_arena *gc);
+
+#if _WIN32_WINNT >= 0x0600
+bool win_wfp_block_dns(const NET_IFINDEX index);
 bool win_wfp_add_filter (HANDLE engineHandle,
                         const FWPM_FILTER0 *filter,
                         PSECURITY_DESCRIPTOR sd,
                         UINT64 *id);
 bool win_wfp_uninit();
 bool win_wfp_init();
-
-/* Convert a string from UTF-8 to UCS-2 */
-WCHAR *wide_string (const char* utf8, struct gc_arena *gc);
 
 /* WFP-related define and GUIDs */
 #define FWPM_SESSION_FLAG_DYNAMIC 0x00000001
@@ -330,5 +332,6 @@ DEFINE_GUID(
    0xb7, 0xf3, 0xbd, 0xa5, 0xd3, 0x28, 0x90, 0xa4
 );
 
+#endif
 #endif
 #endif

@@ -1040,7 +1040,7 @@ win_get_tempdir()
   return tmpdir;
 }
 
-
+#if _WIN32_WINNT >= 0x0600
 bool
 win_wfp_init()
 {
@@ -1098,19 +1098,6 @@ win_wfp_uninit()
     return true;
 }
 
-NET_LUID
-win_adapter_index_to_luid (const NET_IFINDEX index)
-{
-    NET_LUID tapluid;
-    NETIO_STATUS ret;
-    ret = ConvertInterfaceIndexToLuid(index, &tapluid);
-    if (ret == NO_ERROR)
-    {
-        dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
-        return tapluid;
-    }
-}
-
 bool
 win_wfp_add_filter (HANDLE engineHandle,
                     const FWPM_FILTER0 *filter,
@@ -1126,9 +1113,11 @@ win_wfp_add_filter (HANDLE engineHandle,
 }
 
 bool
-win_wfp_block_dns (NET_LUID tapluid)
+win_wfp_block_dns (const NET_IFINDEX index)
 {
     dmsg (D_LOW, "Blocking DNS using WFP");
+    NET_LUID tapluid;
+    NETIO_STATUS ret;
     DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
     UINT64 filterid;
     WCHAR svchostpath[MAX_PATH];
@@ -1136,6 +1125,10 @@ win_wfp_block_dns (NET_LUID tapluid)
 
     FWPM_FILTER0 Filter = {0};
     FWPM_FILTER_CONDITION0 Condition[2] = {0};
+
+    ret = ConvertInterfaceIndexToLuid(index, &tapluid);
+    if (ret == NO_ERROR)
+        dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
 
     /* Get system32 path. */
     GetSystemDirectoryW(svchostpath, MAX_PATH);
@@ -1205,4 +1198,5 @@ win_wfp_block_dns (NET_LUID tapluid)
     return true;
 }
 
+#endif
 #endif
