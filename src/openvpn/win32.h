@@ -285,7 +285,9 @@ bool win_wfp_uninit();
 bool win_wfp_init();
 
 /* WFP-related define and GUIDs */
+#ifndef FWPM_SESSION_FLAG_DYNAMIC
 #define FWPM_SESSION_FLAG_DYNAMIC 0x00000001
+#endif
 
 // c38d57d1-05a7-4c33-904f-7fbceee60e82
 DEFINE_GUID(
