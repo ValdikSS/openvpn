@@ -1173,8 +1173,8 @@ win_wfp_block_dns (const NET_IFINDEX index)
     NETIO_STATUS ret;
     DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
     UINT64 filterid;
-    WCHAR svchostpath[MAX_PATH];
-    FWP_BYTE_BLOB *svchostblob = NULL;
+    WCHAR openvpnpath[MAX_PATH];
+    FWP_BYTE_BLOB *openvpnblob = NULL;
 
     FWPM_FILTER0 Filter = {0};
     FWPM_FILTER_CONDITION0 Condition[2] = {0};
@@ -1183,12 +1183,10 @@ win_wfp_block_dns (const NET_IFINDEX index)
     if (ret == NO_ERROR)
         dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
 
-    /* Get system32 path. */
-    GetSystemDirectoryW(svchostpath, MAX_PATH);
-    /* Add svchost.exe to the path */
-    wcscat(svchostpath, L"\\svchost.exe");
+    /* Get OpenVPN path. */
+    GetModuleFileNameW(NULL, openvpnpath, MAX_PATH);
 
-    if (FwpmGetAppIdFromFileName0(svchostpath, &svchostblob) != ERROR_SUCCESS)
+    if (FwpmGetAppIdFromFileName0(openvpnpath, &openvpnblob) != ERROR_SUCCESS)
         return false;
 
     /* Prepare filter. */
@@ -1198,7 +1196,7 @@ win_wfp_block_dns (const NET_IFINDEX index)
     Filter.filterCondition = Condition;
     Filter.numFilterConditions = 2;
 
-    /* First filter. Block IPv4 DNS requests from svchost.exe. */
+    /* First filter. Block IPv4 DNS queries except from OpenVPN itself. */
     Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
     Filter.action.type = FWP_ACTION_BLOCK;
 
@@ -1208,16 +1206,16 @@ win_wfp_block_dns (const NET_IFINDEX index)
     Condition[0].conditionValue.uint16 = 53;
 
     Condition[1].fieldKey = FWPM_CONDITION_ALE_APP_ID;
-    Condition[1].matchType = FWP_MATCH_EQUAL;
+    Condition[1].matchType = FWP_MATCH_NOT_EQUAL;
     Condition[1].conditionValue.type = FWP_BYTE_BLOB_TYPE;
-    Condition[1].conditionValue.byteBlob = svchostblob;
+    Condition[1].conditionValue.byteBlob = openvpnblob;
 
     /* Add filter condition to our interface. */
     if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
         return false;
     dmsg (D_LOW, "Filter (Block IPv4 DNS) added with ID=%I64d", filterid);
 
-    /* Second filter. Block IPv6 DNS requests from svchost.exe. */
+    /* Second filter. Block IPv6 DNS queries except from OpenVPN itself. */
     Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 
     /* Add filter condition to our interface. */
@@ -1225,28 +1223,27 @@ win_wfp_block_dns (const NET_IFINDEX index)
         return false;
     dmsg (D_LOW, "Filter (Block IPv6 DNS) added with ID=%I64d", filterid);
 
-    /* Third filter. Permit all IPv4 traffic from TAP from svchost.exe. */
+    /* Third filter. Permit IPv4 DNS queries from TAP. */
+    Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
     Filter.action.type = FWP_ACTION_PERMIT;
 
-    Condition[0].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
-    Condition[0].matchType = FWP_MATCH_EQUAL;
-    Condition[0].conditionValue.type = FWP_UINT64;
-
-    Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-    Condition[0].conditionValue.uint64 = &tapluid.Value;
+    Condition[1].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
+    Condition[1].matchType = FWP_MATCH_EQUAL;
+    Condition[1].conditionValue.type = FWP_UINT64;
+    Condition[1].conditionValue.uint64 = &tapluid.Value;
 
     /* Add filter condition to our interface. */
     if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
         return false;
-    dmsg (D_LOW, "Filter (Permit all IPv4 traffic from TAP) added with ID=%I64d", filterid);
+    dmsg (D_LOW, "Filter (Permit IPv4 DNS queries from TAP) added with ID=%I64d", filterid);
 
-    /* Forth filter. Permit all IPv6 traffic from TAP. */
+    /* Forth filter. Permit IPv6 DNS queries from TAP. */
     Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 
     /* Add filter condition to our interface. */
     if (!win_wfp_add_filter(m_hEngineHandle, &Filter, NULL, &filterid))
         return false;
-    dmsg (D_LOW, "Filter (Permit all IPv6 traffic from TAP) added with ID=%I64d", filterid);
+    dmsg (D_LOW, "Filter (Permit IPv6 DNS queries from TAP) added with ID=%I64d", filterid);
 
     return true;
 }
