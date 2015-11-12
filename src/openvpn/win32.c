@@ -63,7 +63,7 @@ static bool pause_exit_enabled = false; /* GLOBAL */
 /*
  * WFP firewall name.
  */
-const WCHAR * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
+WCHAR * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
 
 /*
  * WFP handle and GUID.
