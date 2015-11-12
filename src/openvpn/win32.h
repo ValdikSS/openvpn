@@ -27,10 +27,8 @@
 #define OPENVPN_WIN32_H
 
 #include "mtu.h"
-#if _WIN32_WINNT >= 0x0600
 #include <initguid.h>
 #include <fwpmtypes.h>
-#endif
 
 /* location of executables */
 #define SYS_PATH_ENV_VAR_NAME "SystemRoot"  /* environmental variable name that normally contains the system path */
@@ -275,7 +273,6 @@ const char *win_get_tempdir();
 /* Convert a string from UTF-8 to UCS-2 */
 WCHAR *wide_string (const char* utf8, struct gc_arena *gc);
 
-#if _WIN32_WINNT >= 0x0600
 bool win_wfp_block_dns(const NET_IFINDEX index);
 bool win_wfp_add_filter (HANDLE engineHandle,
                         const FWPM_FILTER0 *filter,
@@ -334,6 +331,5 @@ DEFINE_GUID(
    0xb7, 0xf3, 0xbd, 0xa5, 0xd3, 0x28, 0x90, 0xa4
 );
 
-#endif
 #endif
 #endif
