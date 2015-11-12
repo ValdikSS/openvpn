@@ -1093,7 +1093,6 @@ win_get_tempdir()
   return tmpdir;
 }
 
-#if _WIN32_WINNT >= 0x0600
 bool
 win_wfp_init()
 {
@@ -1248,5 +1247,4 @@ win_wfp_block_dns (const NET_IFINDEX index)
     return true;
 }
 
-#endif
 #endif
