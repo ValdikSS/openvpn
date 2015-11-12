@@ -1480,8 +1480,6 @@ do_open_tun (struct context *c)
                     msg (M_NONFATAL, "Blocking DNS failed!");
             }
       }
-      else
-           msg (M_NONFATAL, "Can't block outside DNS without configured DNS server");
 #endif
 
       /* possibly add routes */
