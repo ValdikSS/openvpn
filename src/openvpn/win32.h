@@ -274,10 +274,6 @@ const char *win_get_tempdir();
 WCHAR *wide_string (const char* utf8, struct gc_arena *gc);
 
 bool win_wfp_block_dns(const NET_IFINDEX index);
-bool win_wfp_add_filter (HANDLE engineHandle,
-                        const FWPM_FILTER0 *filter,
-                        PSECURITY_DESCRIPTOR sd,
-                        UINT64 *id);
 bool win_wfp_uninit();
 bool win_wfp_init();
 

@@ -1044,7 +1044,6 @@ bool
 win_wfp_init()
 {
     CLEAR(m_subLayerGUID);
-    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
     FWPM_SESSION0 session = {0};
     FWPM_SUBLAYER0 SubLayer = {0};
 
@@ -1071,8 +1070,7 @@ win_wfp_init()
 
     /* Add packet filter to our interface. */
     dmsg (D_LOW, "Adding WFP sublayer");
-    dwFwAPiRetCode = FwpmSubLayerAdd0(m_hEngineHandle, &SubLayer, NULL);
-    if (dwFwAPiRetCode != ERROR_SUCCESS)
+    if (FwpmSubLayerAdd0(m_hEngineHandle, &SubLayer, NULL) != ERROR_SUCCESS)
     {
         msg (M_NONFATAL, "Can't add WFP sublayer");
         return false;
@@ -1084,7 +1082,6 @@ bool
 win_wfp_uninit()
 {
     dmsg (D_LOW, "Uninitializing WFP");
-    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
     if (m_hEngineHandle) {
         FwpmSubLayerDeleteByKey0(m_hEngineHandle, &m_subLayerGUID);
         CLEAR(m_subLayerGUID);
@@ -1113,8 +1110,6 @@ win_wfp_block_dns (const NET_IFINDEX index)
 {
     dmsg (D_LOW, "Blocking DNS using WFP");
     NET_LUID tapluid;
-    NETIO_STATUS ret;
-    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
     UINT64 filterid;
     WCHAR openvpnpath[MAX_PATH];
     FWP_BYTE_BLOB *openvpnblob = NULL;
