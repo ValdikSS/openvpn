@@ -6273,6 +6273,8 @@ add_option (struct options *options,
       VERIFY_PERMISSION (OPT_P_IPWIN32);
 #ifdef WIN32
       options->block_outside_dns = true;
+#else
+      msg (M_WARN, "NOTE: block-outside-dns option works only on Windows");
 #endif
     }
 #if PASSTOS_CAPABILITY
