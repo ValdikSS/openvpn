@@ -1240,6 +1240,7 @@ win_wfp_block_dns (const NET_IFINDEX index)
         goto err;
     dmsg (D_LOW, "Filter (Permit IPv6 DNS queries from TAP) added with ID=%I64d", filterid);
 
+    free(openvpnblob);
     return true;
 
     err:
