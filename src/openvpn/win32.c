@@ -103,16 +103,6 @@ DEFINE_GUID(
 );
 
 /*
- * Windows internal socket API state (opaque).
- */
-static struct WSAData wsa_state; /* GLOBAL */
-
-/*
- * Should we call win32_pause() on program exit?
- */
-static bool pause_exit_enabled = false; /* GLOBAL */
-
-/*
  * WFP firewall name.
  */
 WCHAR * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
@@ -122,6 +112,16 @@ WCHAR * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
  */
 static HANDLE m_hEngineHandle = NULL; /* GLOBAL */
 static GUID m_subLayerGUID; /* GLOBAL */
+
+/*
+ * Windows internal socket API state (opaque).
+ */
+static struct WSAData wsa_state; /* GLOBAL */
+
+/*
+ * Should we call win32_pause() on program exit?
+ */
+static bool pause_exit_enabled = false; /* GLOBAL */
 
 /*
  * win32_signal is used to get input from the keyboard

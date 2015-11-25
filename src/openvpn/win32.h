@@ -27,8 +27,6 @@
 #define OPENVPN_WIN32_H
 
 #include "mtu.h"
-#include <initguid.h>
-#include <fwpmtypes.h>
 
 /* location of executables */
 #define SYS_PATH_ENV_VAR_NAME "SystemRoot"  /* environmental variable name that normally contains the system path */
