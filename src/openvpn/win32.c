@@ -49,6 +49,7 @@
 /*
  * WFP-related defines and GUIDs.
  */
+#if _WIN32_WINNT >= 0x0600
 #include <fwpmu.h>
 #include <fwpmtypes.h>
 #include <iphlpapi.h>
@@ -112,6 +113,7 @@ WCHAR * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
  */
 static HANDLE m_hEngineHandle = NULL; /* GLOBAL */
 static GUID m_subLayerGUID; /* GLOBAL */
+#endif
 
 /*
  * Windows internal socket API state (opaque).
@@ -1145,6 +1147,7 @@ win_get_tempdir()
   return tmpdir;
 }
 
+#if _WIN32_WINNT >= 0x0600
 bool
 win_wfp_add_filter (HANDLE engineHandle,
                     const FWPM_FILTER0 *filter,
@@ -1288,4 +1291,5 @@ win_wfp_uninit()
     return true;
 }
 
+#endif
 #endif

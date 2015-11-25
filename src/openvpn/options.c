@@ -715,7 +715,7 @@ static const char usage_message[] =
   "                       optional parameter controls the initial state of ex.\n"
   "--show-net-up   : Show " PACKAGE_NAME "'s view of routing table and net adapter list\n"
   "                  after TAP adapter is up and routes have been added.\n"
-#ifdef WIN32
+#if _WIN32_WINNT >= 0x0600
   "--block-outside-dns   : Block DNS on other network adapters to prevent DNS leaks\n"
 #endif
   "Windows Standalone Options:\n"
@@ -1682,7 +1682,9 @@ show_settings (const struct options *o)
 #ifdef WIN32
   SHOW_BOOL (show_net_up);
   SHOW_INT (route_method);
+#if _WIN32_WINNT >= 0x0600
   SHOW_BOOL (block_outside_dns);
+#endif
   show_tuntap_options (&o->tuntap_options);
 #endif
 #endif
@@ -6320,7 +6322,7 @@ add_option (struct options *options,
   else if (streq (p[0], "block-outside-dns") && !p[1])
     {
       VERIFY_PERMISSION (OPT_P_IPWIN32);
-#ifdef WIN32
+#if _WIN32_WINNT >= 0x0600
       options->block_outside_dns = true;
 #else
       msg (M_WARN, "NOTE: block-outside-dns option works only on Windows");
