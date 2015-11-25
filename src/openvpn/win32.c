@@ -37,10 +37,6 @@
 
 #ifdef WIN32
 
-#include <fwpmu.h>
-#include <fwpmtypes.h>
-#include <iphlpapi.h>
-
 #include "buffer.h"
 #include "error.h"
 #include "mtu.h"
@@ -49,6 +45,62 @@
 #include "misc.h"
 
 #include "memdbg.h"
+
+/*
+ * WFP-related defines and GUIDs.
+ */
+#include <fwpmu.h>
+#include <fwpmtypes.h>
+#include <iphlpapi.h>
+
+#ifndef FWPM_SESSION_FLAG_DYNAMIC
+#define FWPM_SESSION_FLAG_DYNAMIC 0x00000001
+#endif
+
+// c38d57d1-05a7-4c33-904f-7fbceee60e82
+DEFINE_GUID(
+   FWPM_LAYER_ALE_AUTH_CONNECT_V4,
+   0xc38d57d1,
+   0x05a7,
+   0x4c33,
+   0x90, 0x4f, 0x7f, 0xbc, 0xee, 0xe6, 0x0e, 0x82
+);
+
+// 4a72393b-319f-44bc-84c3-ba54dcb3b6b4
+DEFINE_GUID(
+   FWPM_LAYER_ALE_AUTH_CONNECT_V6,
+   0x4a72393b,
+   0x319f,
+   0x44bc,
+   0x84, 0xc3, 0xba, 0x54, 0xdc, 0xb3, 0xb6, 0xb4
+);
+
+// d78e1e87-8644-4ea5-9437-d809ecefc971
+DEFINE_GUID(
+   FWPM_CONDITION_ALE_APP_ID,
+   0xd78e1e87,
+   0x8644,
+   0x4ea5,
+   0x94, 0x37, 0xd8, 0x09, 0xec, 0xef, 0xc9, 0x71
+);
+
+// c35a604d-d22b-4e1a-91b4-68f674ee674b
+DEFINE_GUID(
+   FWPM_CONDITION_IP_REMOTE_PORT,
+   0xc35a604d,
+   0xd22b,
+   0x4e1a,
+   0x91, 0xb4, 0x68, 0xf6, 0x74, 0xee, 0x67, 0x4b
+);
+
+// 4cd62a49-59c3-4969-b7f3-bda5d32890a4
+DEFINE_GUID(
+   FWPM_CONDITION_IP_LOCAL_INTERFACE,
+   0x4cd62a49,
+   0x59c3,
+   0x4969,
+   0xb7, 0xf3, 0xbd, 0xa5, 0xd3, 0x28, 0x90, 0xa4
+);
 
 /*
  * Windows internal socket API state (opaque).
@@ -1094,11 +1146,31 @@ win_get_tempdir()
 }
 
 bool
-win_wfp_init()
+win_wfp_add_filter (HANDLE engineHandle,
+                    const FWPM_FILTER0 *filter,
+                    PSECURITY_DESCRIPTOR sd,
+                    UINT64 *id)
+{
+    if (FwpmFilterAdd0(engineHandle, filter, sd, id) != ERROR_SUCCESS)
+    {
+        msg (M_NONFATAL, "Can't add WFP filter");
+        return false;
+    }
+    return true;
+}
+
+bool
+win_wfp_block_dns (const NET_IFINDEX index)
 {
     CLEAR(m_subLayerGUID);
     FWPM_SESSION0 session = {0};
     FWPM_SUBLAYER0 SubLayer = {0};
+    NET_LUID tapluid;
+    UINT64 filterid;
+    WCHAR openvpnpath[MAX_PATH];
+    FWP_BYTE_BLOB *openvpnblob = NULL;
+    FWPM_FILTER0 Filter = {0};
+    FWPM_FILTER_CONDITION0 Condition[2] = {0};
 
     /* Add temporary filters which don't survive reboots or crashes. */
     session.flags = FWPM_SESSION_FLAG_DYNAMIC;
@@ -1128,48 +1200,8 @@ win_wfp_init()
         msg (M_NONFATAL, "Can't add WFP sublayer");
         return false;
     }
-    return true;
-}
 
-bool
-win_wfp_uninit()
-{
-    dmsg (D_LOW, "Uninitializing WFP");
-    if (m_hEngineHandle) {
-        FwpmSubLayerDeleteByKey0(m_hEngineHandle, &m_subLayerGUID);
-        CLEAR(m_subLayerGUID);
-        FwpmEngineClose0(m_hEngineHandle);
-        m_hEngineHandle = NULL;
-    }
-    return true;
-}
-
-bool
-win_wfp_add_filter (HANDLE engineHandle,
-                    const FWPM_FILTER0 *filter,
-                    PSECURITY_DESCRIPTOR sd,
-                    UINT64 *id)
-{
-    if (FwpmFilterAdd0(engineHandle, filter, sd, id) != ERROR_SUCCESS)
-    {
-        msg (M_NONFATAL, "Can't add WFP filter");
-        return false;
-    }
-    return true;
-}
-
-bool
-win_wfp_block_dns (const NET_IFINDEX index)
-{
     dmsg (D_LOW, "Blocking DNS using WFP");
-    NET_LUID tapluid;
-    UINT64 filterid;
-    WCHAR openvpnpath[MAX_PATH];
-    FWP_BYTE_BLOB *openvpnblob = NULL;
-
-    FWPM_FILTER0 Filter = {0};
-    FWPM_FILTER_CONDITION0 Condition[2] = {0};
-
     if (ConvertInterfaceIndexToLuid(index, &tapluid) == NO_ERROR)
         dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
 
@@ -1241,6 +1273,19 @@ win_wfp_block_dns (const NET_IFINDEX index)
     err:
         FwpmFreeMemory0((void **)&openvpnblob);
         return false;
+}
+
+bool
+win_wfp_uninit()
+{
+    dmsg (D_LOW, "Uninitializing WFP");
+    if (m_hEngineHandle) {
+        FwpmSubLayerDeleteByKey0(m_hEngineHandle, &m_subLayerGUID);
+        CLEAR(m_subLayerGUID);
+        FwpmEngineClose0(m_hEngineHandle);
+        m_hEngineHandle = NULL;
+    }
+    return true;
 }
 
 #endif
