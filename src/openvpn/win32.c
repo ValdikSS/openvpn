@@ -50,6 +50,7 @@
  * WFP-related defines and GUIDs.
  */
 #include <fwpmu.h>
+#include <initguid.h>
 #include <fwpmtypes.h>
 #include <iphlpapi.h>
 
