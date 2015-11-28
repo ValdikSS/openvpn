@@ -6325,7 +6325,7 @@ add_option (struct options *options,
 #if _WIN32_WINNT >= 0x0600
       options->block_outside_dns = true;
 #else
-      msg (M_WARN, "NOTE: block-outside-dns option works only on Windows");
+      msg (M_WARN, "NOTE: block-outside-dns option works only on Windows Vista or later");
 #endif
     }
 #if PASSTOS_CAPABILITY
