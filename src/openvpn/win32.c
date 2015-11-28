@@ -51,6 +51,7 @@
  */
 #if _WIN32_WINNT >= 0x0600
 #include <fwpmu.h>
+#include <initguid.h>
 #include <fwpmtypes.h>
 #include <iphlpapi.h>
 
