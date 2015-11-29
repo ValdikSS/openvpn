@@ -6197,6 +6197,11 @@ add_option (struct options *options,
       VERIFY_PERMISSION (OPT_P_IPWIN32);
       options->tuntap_options.register_dns = true;
     }
+  else if (streq (p[0], "block-outside-dns") && !p[1])
+    {
+      VERIFY_PERMISSION (OPT_P_IPWIN32);
+      options->block_outside_dns = true;
+    }
   else if (streq (p[0], "rdns-internal") && !p[1])
      /* standalone method for internal use
       *
@@ -6268,15 +6273,6 @@ add_option (struct options *options,
       VERIFY_PERMISSION (OPT_P_ROUTE_EXTRAS);
     }
 #endif
-  else if (streq (p[0], "block-outside-dns") && !p[1])
-    {
-      VERIFY_PERMISSION (OPT_P_IPWIN32);
-#ifdef WIN32
-      options->block_outside_dns = true;
-#else
-      msg (M_WARN, "NOTE: block-outside-dns option works only on Windows Vista or later");
-#endif
-    }
 #if PASSTOS_CAPABILITY
   else if (streq (p[0], "passtos") && !p[1])
     {
