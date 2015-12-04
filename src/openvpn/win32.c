@@ -1203,8 +1203,12 @@ win_wfp_block_dns (const NET_IFINDEX index)
     }
 
     dmsg (D_LOW, "Blocking DNS using WFP");
-    if (ConvertInterfaceIndexToLuid(index, &tapluid) == NO_ERROR)
-        dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
+    if (ConvertInterfaceIndexToLuid(index, &tapluid) != NO_ERROR)
+    {
+        msg (M_NONFATAL, "Can't convert interface index to LUID");
+        return false;
+    }
+    dmsg (D_LOW, "Tap Luid: %I64d", tapluid.Value);
 
     /* Get OpenVPN path. */
     GetModuleFileNameW(NULL, openvpnpath, MAX_PATH);
