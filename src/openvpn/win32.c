@@ -113,7 +113,6 @@ WCHAR * FIREWALL_NAME = L"OpenVPN"; /* GLOBAL */
  * WFP handle and GUID.
  */
 static HANDLE m_hEngineHandle = NULL; /* GLOBAL */
-static GUID m_subLayerGUID; /* GLOBAL */
 #endif
 
 /*
@@ -1166,7 +1165,6 @@ win_wfp_add_filter (HANDLE engineHandle,
 bool
 win_wfp_block_dns (const NET_IFINDEX index)
 {
-    CLEAR(m_subLayerGUID);
     FWPM_SESSION0 session = {0};
     FWPM_SUBLAYER0 SubLayer = {0};
     NET_LUID tapluid;
@@ -1189,7 +1187,6 @@ win_wfp_block_dns (const NET_IFINDEX index)
 
     if (UuidCreate(&SubLayer.subLayerKey) != NO_ERROR)
         return false;
-    memcpy(&m_subLayerGUID, &SubLayer.subLayerKey, sizeof(SubLayer.subLayerKey));
 
     /* Populate packet filter layer information. */
     SubLayer.displayData.name = FIREWALL_NAME;
@@ -1220,7 +1217,7 @@ win_wfp_block_dns (const NET_IFINDEX index)
         return false;
 
     /* Prepare filter. */
-    Filter.subLayerKey = m_subLayerGUID;
+    Filter.subLayerKey = SubLayer.subLayerKey;
     Filter.displayData.name = FIREWALL_NAME;
     Filter.weight.type = FWP_EMPTY;
     Filter.filterCondition = Condition;
@@ -1288,8 +1285,6 @@ win_wfp_uninit()
 {
     dmsg (D_LOW, "Uninitializing WFP");
     if (m_hEngineHandle) {
-        FwpmSubLayerDeleteByKey0(m_hEngineHandle, &m_subLayerGUID);
-        CLEAR(m_subLayerGUID);
         FwpmEngineClose0(m_hEngineHandle);
         m_hEngineHandle = NULL;
     }
