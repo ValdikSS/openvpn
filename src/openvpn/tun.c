@@ -1156,7 +1156,7 @@ do_ifconfig (struct tuntap *tt,
 			IFCONFIG_PATH,
 			actual);
       argv_msg (M_INFO, &argv);
-      openvpn_execve_check (&argv, es, 0, NULL);
+      openvpn_execve_check (&argv, NULL, 0, NULL);
       msg (M_INFO, "NOTE: Tried to delete pre-existing tun/tap instance -- No Problem if failure");
 
 
@@ -1194,7 +1194,7 @@ do_ifconfig (struct tuntap *tt,
 	}
 
       argv_msg (M_INFO, &argv);
-      openvpn_execve_check (&argv, es, S_FATAL, "Mac OS X ifconfig failed");
+      openvpn_execve_check (&argv, NULL, S_FATAL, "Mac OS X ifconfig failed");
       tt->did_ifconfig = true;
 
       /* Add a network route for the local tun interface */
@@ -1219,7 +1219,7 @@ do_ifconfig (struct tuntap *tt,
                               tt->netbits_ipv6
                               );
 	  argv_msg (M_INFO, &argv);
-	  openvpn_execve_check (&argv, es, S_FATAL, "MacOS X ifconfig inet6 failed");
+	  openvpn_execve_check (&argv, NULL, S_FATAL, "MacOS X ifconfig inet6 failed");
 
 	  /* and, hooray, we explicitely need to add a route... */
 	  add_route_connected_v6_net(tt, es);

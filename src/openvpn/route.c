@@ -1601,7 +1601,7 @@ add_route (struct route_ipv4 *r,
     }
 
   argv_msg (D_ROUTE, &argv);
-  status = openvpn_execve_check (&argv, es, 0, "ERROR: OS X route add command failed");
+  status = openvpn_execve_check (&argv, NULL, 0, "ERROR: OS X route add command failed");
 
 #elif defined(TARGET_OPENBSD) || defined(TARGET_NETBSD)
 
@@ -1884,7 +1884,7 @@ add_route_ipv6 (struct route_ipv6 *r6, const struct tuntap *tt, unsigned int fla
     argv_printf_cat (&argv, "-iface %s", device);
 
   argv_msg (D_ROUTE, &argv);
-  status = openvpn_execve_check (&argv, es, 0, "ERROR: MacOS X route add -inet6 command failed");
+  status = openvpn_execve_check (&argv, NULL, 0, "ERROR: MacOS X route add -inet6 command failed");
 
 #elif defined(TARGET_OPENBSD)
 
@@ -2066,7 +2066,7 @@ delete_route (struct route_ipv4 *r,
     }
 
   argv_msg (D_ROUTE, &argv);
-  openvpn_execve_check (&argv, es, 0, "ERROR: OS X route delete command failed");
+  openvpn_execve_check (&argv, NULL, 0, "ERROR: OS X route delete command failed");
 
 #elif defined(TARGET_OPENBSD) || defined(TARGET_NETBSD)
 
@@ -2285,7 +2285,7 @@ delete_route_ipv6 (const struct route_ipv6 *r6, const struct tuntap *tt, unsigne
     argv_printf_cat (&argv, "-iface %s", device);
 
   argv_msg (D_ROUTE, &argv);
-  openvpn_execve_check (&argv, es, 0, "ERROR: MacOS X route delete -inet6 command failed");
+  openvpn_execve_check (&argv, NULL, 0, "ERROR: MacOS X route delete -inet6 command failed");
 
 #elif defined(TARGET_OPENBSD)
 
