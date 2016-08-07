@@ -1444,7 +1444,7 @@ add_route (struct route_ipv4 *r,
 
 #endif  /*ENABLE_IPROUTE*/
   argv_msg (D_ROUTE, &argv);
-  status = openvpn_execve_check (&argv, es, 0, "ERROR: Linux route add command failed");
+  status = openvpn_execve_check (&argv, NULL, 0, "ERROR: Linux route add command failed");
 
 #elif defined (TARGET_ANDROID)
   struct buffer out = alloc_buf_gc (128, &gc);
@@ -1769,7 +1769,7 @@ add_route_ipv6 (struct route_ipv6 *r6, const struct tuntap *tt, unsigned int fla
     argv_printf_cat (&argv, " metric %d", r6->metric);
 #endif  /*ENABLE_IPROUTE*/
   argv_msg (D_ROUTE, &argv);
-  status = openvpn_execve_check (&argv, es, 0, "ERROR: Linux route -6/-A inet6 add command failed");
+  status = openvpn_execve_check (&argv, NULL, 0, "ERROR: Linux route -6/-A inet6 add command failed");
 
 #elif defined (TARGET_ANDROID)
     struct buffer out = alloc_buf_gc (64, &gc);
@@ -1967,7 +1967,7 @@ delete_route (struct route_ipv4 *r,
   if (r->flags & RT_METRIC_DEFINED)
     argv_printf_cat (&argv, "metric %d", r->metric);
   argv_msg (D_ROUTE, &argv);
-  openvpn_execve_check (&argv, es, 0, "ERROR: Linux route delete command failed");
+  openvpn_execve_check (&argv, NULL, 0, "ERROR: Linux route delete command failed");
 
 #elif defined (WIN32)
   
@@ -2188,7 +2188,7 @@ delete_route_ipv6 (const struct route_ipv6 *r6, const struct tuntap *tt, unsigne
     argv_printf_cat (&argv, " metric %d", r6->metric);
 #endif  /*ENABLE_IPROUTE*/
   argv_msg (D_ROUTE, &argv);
-  openvpn_execve_check (&argv, es, 0, "ERROR: Linux route -6/-A inet6 del command failed");
+  openvpn_execve_check (&argv, NULL, 0, "ERROR: Linux route -6/-A inet6 del command failed");
 
 #elif defined (WIN32)
 
