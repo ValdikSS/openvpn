@@ -1487,7 +1487,7 @@ add_route (struct route_ipv4 *r,
     else if ((flags & ROUTE_METHOD_MASK) == ROUTE_METHOD_EXE)
       {
 	netcmd_semaphore_lock ();
-	status = openvpn_execve_check (&argv, es, 0, "ERROR: Windows route add command failed");
+	status = openvpn_execve_check (&argv, NULL, 0, "ERROR: Windows route add command failed");
 	netcmd_semaphore_release ();
       }
     else if ((flags & ROUTE_METHOD_MASK) == ROUTE_METHOD_ADAPTIVE)
@@ -1498,7 +1498,7 @@ add_route (struct route_ipv4 *r,
 	  {
 	    msg (D_ROUTE, "Route addition fallback to route.exe");
 	    netcmd_semaphore_lock ();
-	    status = openvpn_execve_check (&argv, es, 0, "ERROR: Windows route add command failed [adaptive]");
+	    status = openvpn_execve_check (&argv, NULL, 0, "ERROR: Windows route add command failed [adaptive]");
 	    netcmd_semaphore_release ();
 	  }
       }
@@ -1827,7 +1827,7 @@ add_route_ipv6 (struct route_ipv6 *r6, const struct tuntap *tt, unsigned int fla
       argv_msg (D_ROUTE, &argv);
 
       netcmd_semaphore_lock ();
-      status = openvpn_execve_check (&argv, es, 0, "ERROR: Windows route add ipv6 command failed");
+      status = openvpn_execve_check (&argv, NULL, 0, "ERROR: Windows route add ipv6 command failed");
       netcmd_semaphore_release ();
     }
 
@@ -1993,7 +1993,7 @@ delete_route (struct route_ipv4 *r,
   else if ((flags & ROUTE_METHOD_MASK) == ROUTE_METHOD_EXE)
     {
       netcmd_semaphore_lock ();
-      openvpn_execve_check (&argv, es, 0, "ERROR: Windows route delete command failed");
+      openvpn_execve_check (&argv, NULL, 0, "ERROR: Windows route delete command failed");
       netcmd_semaphore_release ();
     }
   else if ((flags & ROUTE_METHOD_MASK) == ROUTE_METHOD_ADAPTIVE)
@@ -2004,7 +2004,7 @@ delete_route (struct route_ipv4 *r,
 	{
 	  msg (D_ROUTE, "Route deletion fallback to route.exe");
 	  netcmd_semaphore_lock ();
-	  openvpn_execve_check (&argv, es, 0, "ERROR: Windows route delete command failed [adaptive]");
+	  openvpn_execve_check (&argv, NULL, 0, "ERROR: Windows route delete command failed [adaptive]");
 	  netcmd_semaphore_release ();
 	}
     }
@@ -2241,7 +2241,7 @@ delete_route_ipv6 (const struct route_ipv6 *r6, const struct tuntap *tt, unsigne
       argv_msg (D_ROUTE, &argv);
 
       netcmd_semaphore_lock ();
-      openvpn_execve_check (&argv, es, 0, "ERROR: Windows route delete ipv6 command failed");
+      openvpn_execve_check (&argv, NULL, 0, "ERROR: Windows route delete ipv6 command failed");
       netcmd_semaphore_release ();
     }
 
