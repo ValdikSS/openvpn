@@ -58,7 +58,7 @@ int set_lladdr(const char *ifname, const char *lladdr,
 #endif
 
   argv_msg (M_INFO, &argv);
-  r = openvpn_execve_check (&argv, es, M_WARN, "ERROR: Unable to set link layer address.");
+  r = openvpn_execve_check (&argv, NULL, M_WARN, "ERROR: Unable to set link layer address.");
   if (r)
     msg (M_INFO, "TUN/TAP link layer address set to %s", lladdr);
 

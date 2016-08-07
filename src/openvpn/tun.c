@@ -794,7 +794,7 @@ do_ifconfig (struct tuntap *tt,
 			  tun_mtu
 			  );
 	  argv_msg (M_INFO, &argv);
-	  openvpn_execve_check (&argv, es, S_FATAL, "Linux ip link set failed");
+	  openvpn_execve_check (&argv, NULL, S_FATAL, "Linux ip link set failed");
 
 	if (tun) {
 
@@ -809,7 +809,7 @@ do_ifconfig (struct tuntap *tt,
 				  ifconfig_remote_netmask
 				  );
 		  argv_msg (M_INFO, &argv);
-		  openvpn_execve_check (&argv, es, S_FATAL, "Linux ip addr add failed");
+		  openvpn_execve_check (&argv, NULL, S_FATAL, "Linux ip addr add failed");
 	} else {
 		argv_printf (&argv,
 				  "%s addr add dev %s %s/%d broadcast %s",
@@ -820,7 +820,7 @@ do_ifconfig (struct tuntap *tt,
 				  ifconfig_broadcast
 				  );
 		  argv_msg (M_INFO, &argv);
-		  openvpn_execve_check (&argv, es, S_FATAL, "Linux ip addr add failed");
+		  openvpn_execve_check (&argv, NULL, S_FATAL, "Linux ip addr add failed");
 	}
       if ( do_ipv6 )
 	{
@@ -832,7 +832,7 @@ do_ifconfig (struct tuntap *tt,
 		      actual
 		      );
 	  argv_msg (M_INFO, &argv);
-	  openvpn_execve_check (&argv, es, S_FATAL, "Linux ip -6 addr add failed");
+	  openvpn_execve_check (&argv, NULL, S_FATAL, "Linux ip -6 addr add failed");
 	}
       tt->did_ifconfig = true;
 #else
@@ -856,7 +856,7 @@ do_ifconfig (struct tuntap *tt,
 			  ifconfig_broadcast
 			  );
       argv_msg (M_INFO, &argv);
-      openvpn_execve_check (&argv, es, S_FATAL, "Linux ifconfig failed");
+      openvpn_execve_check (&argv, NULL, S_FATAL, "Linux ifconfig failed");
       if ( do_ipv6 )
 	{
 	  argv_printf (&argv,
@@ -867,7 +867,7 @@ do_ifconfig (struct tuntap *tt,
 			  tt->netbits_ipv6
 			  );
 	  argv_msg (M_INFO, &argv);
-	  openvpn_execve_check (&argv, es, S_FATAL, "Linux ifconfig inet6 failed");
+	  openvpn_execve_check (&argv, NULL, S_FATAL, "Linux ifconfig inet6 failed");
 	}
       tt->did_ifconfig = true;
 
