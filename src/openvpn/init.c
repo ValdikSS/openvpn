@@ -44,6 +44,7 @@
 #include "ping.h"
 #include "mstats.h"
 #include "ssl_verify.h"
+#include "tls_crypt.h"
 #include "forward-inline.h"
 
 #include "memdbg.h"
@@ -2090,7 +2091,7 @@ key_schedule_free (struct key_schedule *ks, bool free_ssl_ctx)
   if (tls_ctx_initialised(&ks->ssl_ctx) && free_ssl_ctx)
     {
       tls_ctx_free (&ks->ssl_ctx);
-      free_key_ctx_bi (&ks->tls_auth_key);
+      free_key_ctx_bi (&ks->tls_wrap_key);
     }
 #endif /* ENABLE_CRYPTO */
   CLEAR (*ks);
@@ -2279,8 +2280,14 @@ do_init_crypto_tls_c1 (struct context *c)
 	    }
 
 	  get_tls_handshake_key (&c->c1.ks.tls_auth_key_type,
-	      &c->c1.ks.tls_auth_key, file, options->key_direction, flags);
+	      &c->c1.ks.tls_wrap_key, file, options->key_direction, flags);
 	}
+
+      /* TLS handshake encryption+authentication (--tls-crypt) */
+      if (options->tls_crypt_file) {
+	  tls_crypt_init_key (&c->c1.ks.tls_wrap_key, options->tls_crypt_file,
+	      options->tls_crypt_inline, options->tls_server);
+      }
 
       c->c1.ciphername = options->ciphername;
       c->c1.authname = options->authname;
@@ -2458,12 +2465,22 @@ do_init_crypto_tls (struct context *c, const unsigned int flags)
   /* TLS handshake authentication (--tls-auth) */
   if (options->tls_auth_file)
     {
-      to.tls_auth.key_ctx_bi = c->c1.ks.tls_auth_key;
-      to.tls_auth.pid_persist = &c->c1.pid_persist;
-      to.tls_auth.flags |= CO_PACKET_ID_LONG_FORM;
+      to.tls_wrap.mode = TLS_WRAP_AUTH;
+      to.tls_wrap.opt.key_ctx_bi = c->c1.ks.tls_wrap_key;
+      to.tls_wrap.opt.pid_persist = &c->c1.pid_persist;
+      to.tls_wrap.opt.flags |= CO_PACKET_ID_LONG_FORM;
       crypto_adjust_frame_parameters (&to.frame,
 				      &c->c1.ks.tls_auth_key_type,
 				      false, true, true);
+    }
+
+  /* TLS handshake encryption (--tls-crypt) */
+  if (options->tls_crypt_file)
+    {
+      to.tls_wrap.mode = TLS_WRAP_CRYPT;
+      to.tls_wrap.opt.key_ctx_bi = c->c1.ks.tls_wrap_key;
+      to.tls_wrap.opt.pid_persist = &c->c1.pid_persist;
+      tls_crypt_adjust_frame_parameters (&to.frame);
     }
 
   /* If we are running over TCP, allow for
@@ -3829,7 +3846,7 @@ inherit_context_child (struct context *dest,
   dest->c1.ks.key_type = src->c1.ks.key_type;
   /* inherit SSL context */
   dest->c1.ks.ssl_ctx = src->c1.ks.ssl_ctx;
-  dest->c1.ks.tls_auth_key = src->c1.ks.tls_auth_key;
+  dest->c1.ks.tls_wrap_key = src->c1.ks.tls_wrap_key;
   dest->c1.ks.tls_auth_key_type = src->c1.ks.tls_auth_key_type;
 #endif
 

@@ -4897,8 +4897,8 @@ Exit on TLS negotiation failure.
 .\"*********************************************************
 .TP
 .B \-\-tls\-auth file [direction]
-Add an additional layer of HMAC authentication on top of the TLS
-control channel to protect against DoS attacks.
+Add an additional layer of HMAC authentication on top of the TLS control channel
+to protect against attacks on the TLS stack and DoS attacks.
 
 In a nutshell,
 .B \-\-tls\-auth
@@ -4969,10 +4969,25 @@ option which will keep OpenVPN's replay protection state
 in a file so that it is not lost across restarts.
 
 It should be emphasized that this feature is optional and that the
-passphrase/key file used with
+key file used with
 .B \-\-tls\-auth
 gives a peer nothing more than the power to initiate a TLS
 handshake.  It is not used to encrypt or authenticate any tunnel data.
+.\"*********************************************************
+.TP
+.B \-\-tls\-crypt keyfile
+
+Encrypt and authenticate all control channel packets with the key from
+.B keyfile\fR.
+(See
+.B \-\-tls\-auth
+for more background.)
+
+Encrypting (and authenticating) control channel packets:
+ * provides more privacy by hiding the certificate used for the TLS connection,
+ * makes it harder to identify OpenVPN traffic as such,
+ * provides "poor-man's" post-quantum security, against attackers who will never
+   know the pre-shared key (i.e. no forward secrecy).
 .\"*********************************************************
 .TP
 .B \-\-askpass [file]

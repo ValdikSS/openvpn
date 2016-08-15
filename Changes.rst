@@ -62,6 +62,11 @@ Cipher negotiation
     to use that cipher.  Data channel cipher negotiation can be controlled
     using --ncp-ciphers and --ncp-disable.
 
+Control channel encryption (``--tls-crypt``)
+    Use a pre-shared static key (like the ``--tls-auth`` key) to encrypt control
+    channel packets.  Provides more privacy, some obfuscation and poor-man's
+    post-quantum security.
+
 
 User-visible Changes
 --------------------
