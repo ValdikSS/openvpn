@@ -6668,6 +6668,17 @@ add_option (struct options *options,
     {
       VERIFY_PERMISSION (OPT_P_GENERAL|OPT_P_INSTANCE);
       options->ncp_ciphers = p[1];
+
+      struct key_type fake_kt;
+      char * temp_cipher;
+      temp_cipher = strtok (p[1], ":");
+      while (temp_cipher != NULL)
+      {
+          init_key_type (&fake_kt, temp_cipher,
+                         options->authname, options->keysize,
+                         true, false);
+          temp_cipher = strtok (NULL, ":");
+      }
     }
   else if (streq (p[0], "ncp-disable") && !p[1])
     {
