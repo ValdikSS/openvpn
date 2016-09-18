@@ -6671,7 +6671,6 @@ add_option (struct options *options,
 
       struct key_type fake_kt;
       char *temp_cipher = string_alloc (p[1], NULL);
-      char *temp_cipher_orig = temp_cipher;
       const char *token = strtok (temp_cipher, ":");
       while (token != NULL)
       {
@@ -6680,7 +6679,7 @@ add_option (struct options *options,
                          true, false);
           token = strtok (NULL, ":");
       }
-      free(temp_cipher_orig);
+      free(temp_cipher);
     }
   else if (streq (p[0], "ncp-disable") && !p[1])
     {
