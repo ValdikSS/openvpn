@@ -6670,15 +6670,17 @@ add_option (struct options *options,
       options->ncp_ciphers = p[1];
 
       struct key_type fake_kt;
-      char * temp_cipher;
-      temp_cipher = strtok (p[1], ":");
-      while (temp_cipher != NULL)
+      char *temp_cipher = string_alloc (p[1], NULL);
+      char *temp_cipher_orig = temp_cipher;
+      const char *token = strtok (temp_cipher, ":");
+      while (token != NULL)
       {
-          init_key_type (&fake_kt, temp_cipher,
+          init_key_type (&fake_kt, token,
                          options->authname, options->keysize,
                          true, false);
-          temp_cipher = strtok (NULL, ":");
+          token = strtok (NULL, ":");
       }
+      free(temp_cipher_orig);
     }
   else if (streq (p[0], "ncp-disable") && !p[1])
     {
