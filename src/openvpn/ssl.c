@@ -284,6 +284,27 @@ tls_get_cipher_name_pair (const char * cipher_name, size_t len) {
   return NULL;
 }
 
+/**
+ * Limit the reneg_bytes value when using a small-block (<128 bytes) cipher.
+ *
+ * @param cipher	The current cipher (may be NULL).
+ * @param reneg_bytes	Pointer to the current reneg_bytes, updated if needed.
+ * 			May *not* be NULL.
+ */
+static void
+tls_limit_reneg_bytes (const cipher_kt_t *cipher, int *reneg_bytes)
+{
+  if (cipher && (cipher_kt_block_size(cipher) < 128/8))
+    {
+      if (*reneg_bytes == -1) /* Not user-specified */
+	{
+	  msg (M_WARN, "WARNING: cipher with small block size in use, "
+	       "reducing reneg-bytes to 64MB to mitigate SWEET32 attacks.");
+	  *reneg_bytes = 64 * 1024 * 1024;
+	}
+    }
+}
+
 /*
  * Max number of bytes we will add
  * for data structures common to both
@@ -800,7 +821,7 @@ key_state_init (struct tls_session *session, struct key_state *ks)
   /* init packet ID tracker */
   if (session->opt->replay)
     {
-      packet_id_init (&ks->crypto_options.packet_id, session->opt->tcp_mode,
+      packet_id_init (&ks->crypto_options.packet_id,
 	  session->opt->replay_window, session->opt->replay_time, "SSL",
 	  ks->key_id);
     }
@@ -949,8 +970,8 @@ tls_session_init (struct tls_multi *multi, struct tls_session *session)
   session->tls_wrap.work = alloc_buf (TLS_CHANNEL_BUF_SIZE);
 
   /* initialize packet ID replay window for --tls-auth */
+
   packet_id_init (&session->tls_wrap.opt.packet_id,
-		  session->opt->tcp_mode,
 		  session->opt->replay_window,
 		  session->opt->replay_time,
 		  "TLS_WRAP", session->key_id);
@@ -1183,6 +1204,12 @@ tls_multi_free (struct tls_multi *multi, bool clear)
     free (multi->locked_username);
 
   cert_hash_free (multi->locked_cert_hash_set);
+
+  if (multi->auth_token)
+    {
+      memset (multi->auth_token, 0, AUTH_TOKEN_SIZE);
+      free (multi->auth_token);
+    }
 
   for (i = 0; i < TM_SIZE; ++i)
     tls_session_free (&multi->session[i], false);
@@ -1747,6 +1774,8 @@ tls_session_update_crypto_params(struct tls_session *session,
       msg (D_TLS_ERRORS, "TLS Error: server generate_key_expansion failed");
       goto cleanup;
     }
+  tls_limit_reneg_bytes (session->opt->key_type.cipher,
+			 &session->opt->renegotiate_bytes);
   ret = true;
 cleanup:
   CLEAR (*ks->key_src);
@@ -2131,6 +2160,8 @@ key_method_2_write (struct buffer *buf, struct tls_session *session)
 	}
 		      
       CLEAR (*ks->key_src);
+      tls_limit_reneg_bytes (session->opt->key_type.cipher,
+			     &session->opt->renegotiate_bytes);
     }
 
   return true;
@@ -2359,6 +2390,8 @@ key_method_2_read (struct buffer *buf, struct tls_multi *multi, struct tls_sessi
 	}
 
       CLEAR (*ks->key_src);
+      tls_limit_reneg_bytes (session->opt->key_type.cipher,
+			     &session->opt->renegotiate_bytes);
     }
 
   gc_free (&gc);
@@ -2415,7 +2448,7 @@ tls_process (struct tls_multi *multi,
   if (ks->state >= S_ACTIVE &&
       ((session->opt->renegotiate_seconds
 	&& now >= ks->established + session->opt->renegotiate_seconds)
-       || (session->opt->renegotiate_bytes
+       || (session->opt->renegotiate_bytes > 0
 	   && ks->n_bytes >= session->opt->renegotiate_bytes)
        || (session->opt->renegotiate_packets
 	   && ks->n_packets >= session->opt->renegotiate_packets)
@@ -2455,271 +2488,265 @@ tls_process (struct tls_multi *multi,
        * CHANGED with 2.0 -> now we may send tunnel configuration
        * info over the control channel.
        */
-      if (true)
+
+      /* Initial handshake */
+      if (ks->state == S_INITIAL)
 	{
-	  /* Initial handshake */
-	  if (ks->state == S_INITIAL)
-	    {
-	      buf = reliable_get_buf_output_sequenced (ks->send_reliable);
-	      if (buf)
-		{
-		  ks->must_negotiate = now + session->opt->handshake_window;
-		  ks->auth_deferred_expire = now + auth_deferred_expire_window (session->opt);
-
-		  /* null buffer */
-		  reliable_mark_active_outgoing (ks->send_reliable, buf, ks->initial_opcode);
-		  INCR_GENERATED;
-	      
-		  ks->state = S_PRE_START;
-		  state_change = true;
-		  dmsg (D_TLS_DEBUG, "TLS: Initial Handshake, sid=%s",
-		       session_id_print (&session->session_id, &gc));
-
-#ifdef ENABLE_MANAGEMENT
-		  if (management && ks->initial_opcode != P_CONTROL_SOFT_RESET_V1)
-		    {
-		      management_set_state (management,
-					    OPENVPN_STATE_WAIT,
-					    NULL,
-                                            NULL,
-                                            NULL,
-                                            NULL,
-                                            NULL);
-		    }
-#endif
-		}
-	    }
-
-	  /* Are we timed out on receive? */
-	  if (now >= ks->must_negotiate)
-	    {
-	      if (ks->state < S_ACTIVE)
-		{
-		  msg (D_TLS_ERRORS,
-		       "TLS Error: TLS key negotiation failed to occur within %d seconds (check your network connectivity)",
-		       session->opt->handshake_window);
-		  goto error;
-		}
-	      else /* assume that ks->state == S_ACTIVE */
-		{
-		  dmsg (D_TLS_DEBUG_MED, "STATE S_NORMAL_OP");
-		  ks->state = S_NORMAL_OP;
-		  ks->must_negotiate = 0;
-		}
-	    }
-
-	  /* Wait for Initial Handshake ACK */
-	  if (ks->state == S_PRE_START && FULL_SYNC)
-	    {
-	      ks->state = S_START;
-	      state_change = true;
-	      dmsg (D_TLS_DEBUG_MED, "STATE S_START");
-	    }
-
-	  /* Wait for ACK */
-	  if (((ks->state == S_GOT_KEY && !session->opt->server) ||
-	       (ks->state == S_SENT_KEY && session->opt->server)))
-	    {
-	      if (FULL_SYNC)
-		{
-		  ks->established = now;
-		  dmsg (D_TLS_DEBUG_MED, "STATE S_ACTIVE");
-		  if (check_debug_level (D_HANDSHAKE))
-		    print_details (&ks->ks_ssl, "Control Channel:");
-		  state_change = true;
-		  ks->state = S_ACTIVE;
-		  INCR_SUCCESS;
-
-		  /* Set outgoing address for data channel packets */
-		  link_socket_set_outgoing_addr (NULL, to_link_socket_info, &ks->remote_addr, session->common_name, session->opt->es);
-
-                  /* Flush any payload packets that were buffered before our state transitioned to S_ACTIVE */
-                  flush_payload_buffer (ks);
-
-#ifdef MEASURE_TLS_HANDSHAKE_STATS
-		  show_tls_performance_stats();
-#endif
-		}
-	    }
-
-	  /* Reliable buffer to outgoing TCP/UDP (send up to CONTROL_SEND_ACK_MAX ACKs
-	     for previously received packets) */
-	  if (!to_link->len && reliable_can_send (ks->send_reliable))
-	    {
-	      int opcode;
-	      struct buffer b;
-
-	      buf = reliable_send (ks->send_reliable, &opcode);
-	      ASSERT (buf);
-	      b = *buf;
-	      INCR_SENT;
-
-	      write_control_auth (session, ks, &b, to_link_addr, opcode,
-				  CONTROL_SEND_ACK_MAX, true);
-	      *to_link = b;
-	      active = true;
-	      state_change = true;
-	      dmsg (D_TLS_DEBUG, "Reliable -> TCP/UDP");
-	      break;
-	    }
-
-#ifndef TLS_AGGREGATE_ACK
-	  /* Send 1 or more ACKs (each received control packet gets one ACK) */
-	  if (!to_link->len && !reliable_ack_empty (ks->rec_ack))
-	    {
-	      buf = &ks->ack_write_buf;
-	      ASSERT (buf_init (buf, FRAME_HEADROOM (&multi->opt.frame)));
-	      write_control_auth (session, ks, buf, to_link_addr, P_ACK_V1,
-				  RELIABLE_ACK_SIZE, false);
-	      *to_link = *buf;
-	      active = true;
-	      state_change = true;
-	      dmsg (D_TLS_DEBUG, "Dedicated ACK -> TCP/UDP");
-	      break;
-	    }
-#endif
-
-	  /* Write incoming ciphertext to TLS object */
-	  buf = reliable_get_buf_sequenced (ks->rec_reliable);
+	  buf = reliable_get_buf_output_sequenced (ks->send_reliable);
 	  if (buf)
 	    {
-	      int status = 0;
-	      if (buf->len)
-		{
-		  status = key_state_write_ciphertext (&ks->ks_ssl, buf);
-		  if (status == -1)
-		    {
-		      msg (D_TLS_ERRORS,
-			   "TLS Error: Incoming Ciphertext -> TLS object write error");
-		      goto error;
-		    }
-		}
-	      else
-		{
-		  status = 1;
-		}
-	      if (status == 1)
-		{
-		  reliable_mark_deleted (ks->rec_reliable, buf, true);
-		  state_change = true;
-		  dmsg (D_TLS_DEBUG, "Incoming Ciphertext -> TLS");
-		}
-	    }
+	      ks->must_negotiate = now + session->opt->handshake_window;
+	      ks->auth_deferred_expire = now + auth_deferred_expire_window (session->opt);
 
-	  /* Read incoming plaintext from TLS object */
-	  buf = &ks->plaintext_read_buf;
-	  if (!buf->len)
-	    {
-	      int status;
+	      /* null buffer */
+	      reliable_mark_active_outgoing (ks->send_reliable, buf, ks->initial_opcode);
+	      INCR_GENERATED;
+	      
+	      ks->state = S_PRE_START;
+	      state_change = true;
+	      dmsg (D_TLS_DEBUG, "TLS: Initial Handshake, sid=%s",
+		    session_id_print (&session->session_id, &gc));
 
-	      ASSERT (buf_init (buf, 0));
-	      status = key_state_read_plaintext (&ks->ks_ssl, buf, TLS_CHANNEL_BUF_SIZE);
-	      update_time ();
-	      if (status == -1)
+#ifdef ENABLE_MANAGEMENT
+	      if (management && ks->initial_opcode != P_CONTROL_SOFT_RESET_V1)
 		{
-		  msg (D_TLS_ERRORS, "TLS Error: TLS object -> incoming plaintext read error");
-		  goto error;
+		  management_set_state (management,
+					OPENVPN_STATE_WAIT,
+					NULL,
+					NULL,
+					NULL,
+					NULL,
+					NULL);
 		}
-	      if (status == 1)
-		{
-		  state_change = true;
-		  dmsg (D_TLS_DEBUG, "TLS -> Incoming Plaintext");
-		}
-#if 0 /* show null plaintext reads */
-	      if (!status)
-		msg (M_INFO, "TLS plaintext read -> NULL return");
 #endif
 	    }
+	}
 
-	  /* Send Key */
-	  buf = &ks->plaintext_write_buf;
-	  if (!buf->len && ((ks->state == S_START && !session->opt->server) ||
-			    (ks->state == S_GOT_KEY && session->opt->server)))
+      /* Are we timed out on receive? */
+      if (now >= ks->must_negotiate)
+	{
+	  if (ks->state < S_ACTIVE)
 	    {
-	      if (session->opt->key_method == 1)
-		{
-		  if (!key_method_1_write (buf, session))
-		    goto error;
-		}
-	      else if (session->opt->key_method == 2)
-		{
-		  if (!key_method_2_write (buf, session))
-		    goto error;
-		}
-	      else
-		{
-		  ASSERT (0);
-		}
-
-	      state_change = true;
-	      dmsg (D_TLS_DEBUG_MED, "STATE S_SENT_KEY");
-	      ks->state = S_SENT_KEY;
+	      msg (D_TLS_ERRORS,
+		   "TLS Error: TLS key negotiation failed to occur within %d seconds (check your network connectivity)",
+		   session->opt->handshake_window);
+	      goto error;
 	    }
-
-	  /* Receive Key */
-	  buf = &ks->plaintext_read_buf;
-	  if (buf->len
-	      && ((ks->state == S_SENT_KEY && !session->opt->server)
-		  || (ks->state == S_START && session->opt->server)))
+	  else /* assume that ks->state == S_ACTIVE */
 	    {
-	      if (session->opt->key_method == 1)
-		{
-		  if (!key_method_1_read (buf, session))
-		    goto error;
-		}
-	      else if (session->opt->key_method == 2)
-		{
-		  if (!key_method_2_read (buf, multi, session))
-		    goto error;
-		}
-	      else
-		{
-		  ASSERT (0);
-		}
-
-	      state_change = true;
-	      dmsg (D_TLS_DEBUG_MED, "STATE S_GOT_KEY");
-	      ks->state = S_GOT_KEY;
+	      dmsg (D_TLS_DEBUG_MED, "STATE S_NORMAL_OP");
+	      ks->state = S_NORMAL_OP;
+	      ks->must_negotiate = 0;
 	    }
+	}
 
-	  /* Write outgoing plaintext to TLS object */
-	  buf = &ks->plaintext_write_buf;
+      /* Wait for Initial Handshake ACK */
+      if (ks->state == S_PRE_START && FULL_SYNC)
+	{
+	  ks->state = S_START;
+	  state_change = true;
+	  dmsg (D_TLS_DEBUG_MED, "STATE S_START");
+	}
+
+      /* Wait for ACK */
+      if (((ks->state == S_GOT_KEY && !session->opt->server) ||
+	   (ks->state == S_SENT_KEY && session->opt->server)))
+	{
+	  if (FULL_SYNC)
+	    {
+	      ks->established = now;
+	      dmsg (D_TLS_DEBUG_MED, "STATE S_ACTIVE");
+	      if (check_debug_level (D_HANDSHAKE))
+		print_details (&ks->ks_ssl, "Control Channel:");
+	      state_change = true;
+	      ks->state = S_ACTIVE;
+	      INCR_SUCCESS;
+
+	      /* Set outgoing address for data channel packets */
+	      link_socket_set_outgoing_addr (NULL, to_link_socket_info, &ks->remote_addr, session->common_name, session->opt->es);
+
+	      /* Flush any payload packets that were buffered before our state transitioned to S_ACTIVE */
+	      flush_payload_buffer (ks);
+
+#ifdef MEASURE_TLS_HANDSHAKE_STATS
+	      show_tls_performance_stats();
+#endif
+	    }
+	}
+
+      /* Reliable buffer to outgoing TCP/UDP (send up to CONTROL_SEND_ACK_MAX ACKs
+	 for previously received packets) */
+      if (!to_link->len && reliable_can_send (ks->send_reliable))
+	{
+	  int opcode;
+	  struct buffer b;
+
+	  buf = reliable_send (ks->send_reliable, &opcode);
+	  ASSERT (buf);
+	  b = *buf;
+	  INCR_SENT;
+
+	  write_control_auth (session, ks, &b, to_link_addr, opcode,
+			      CONTROL_SEND_ACK_MAX, true);
+	  *to_link = b;
+	  active = true;
+	  state_change = true;
+	  dmsg (D_TLS_DEBUG, "Reliable -> TCP/UDP");
+	  break;
+	}
+
+#ifndef TLS_AGGREGATE_ACK
+      /* Send 1 or more ACKs (each received control packet gets one ACK) */
+      if (!to_link->len && !reliable_ack_empty (ks->rec_ack))
+	{
+	  buf = &ks->ack_write_buf;
+	  ASSERT (buf_init (buf, FRAME_HEADROOM (&multi->opt.frame)));
+	  write_control_auth (session, ks, buf, to_link_addr, P_ACK_V1,
+			      RELIABLE_ACK_SIZE, false);
+	  *to_link = *buf;
+	  active = true;
+	  state_change = true;
+	  dmsg (D_TLS_DEBUG, "Dedicated ACK -> TCP/UDP");
+	  break;
+	}
+#endif
+
+      /* Write incoming ciphertext to TLS object */
+      buf = reliable_get_buf_sequenced (ks->rec_reliable);
+      if (buf)
+	{
+	  int status = 0;
 	  if (buf->len)
 	    {
-	      int status = key_state_write_plaintext (&ks->ks_ssl, buf);
+	      status = key_state_write_ciphertext (&ks->ks_ssl, buf);
 	      if (status == -1)
 		{
 		  msg (D_TLS_ERRORS,
-		       "TLS ERROR: Outgoing Plaintext -> TLS object write error");
+		       "TLS Error: Incoming Ciphertext -> TLS object write error");
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      status = 1;
+	    }
+	  if (status == 1)
+	    {
+	      reliable_mark_deleted (ks->rec_reliable, buf, true);
+	      state_change = true;
+	      dmsg (D_TLS_DEBUG, "Incoming Ciphertext -> TLS");
+	    }
+	}
+
+      /* Read incoming plaintext from TLS object */
+      buf = &ks->plaintext_read_buf;
+      if (!buf->len)
+	{
+	  int status;
+
+	  ASSERT (buf_init (buf, 0));
+	  status = key_state_read_plaintext (&ks->ks_ssl, buf, TLS_CHANNEL_BUF_SIZE);
+	  update_time ();
+	  if (status == -1)
+	    {
+	      msg (D_TLS_ERRORS, "TLS Error: TLS object -> incoming plaintext read error");
+	      goto error;
+	    }
+	  if (status == 1)
+	    {
+	      state_change = true;
+	      dmsg (D_TLS_DEBUG, "TLS -> Incoming Plaintext");
+	    }
+	}
+
+      /* Send Key */
+      buf = &ks->plaintext_write_buf;
+      if (!buf->len && ((ks->state == S_START && !session->opt->server) ||
+			(ks->state == S_GOT_KEY && session->opt->server)))
+	{
+	  if (session->opt->key_method == 1)
+	    {
+	      if (!key_method_1_write (buf, session))
+		goto error;
+	    }
+	  else if (session->opt->key_method == 2)
+	    {
+	      if (!key_method_2_write (buf, session))
+		goto error;
+	    }
+	  else
+	    {
+	      ASSERT (0);
+	    }
+
+	  state_change = true;
+	  dmsg (D_TLS_DEBUG_MED, "STATE S_SENT_KEY");
+	  ks->state = S_SENT_KEY;
+	}
+
+      /* Receive Key */
+      buf = &ks->plaintext_read_buf;
+      if (buf->len
+	  && ((ks->state == S_SENT_KEY && !session->opt->server)
+	      || (ks->state == S_START && session->opt->server)))
+	{
+	  if (session->opt->key_method == 1)
+	    {
+	      if (!key_method_1_read (buf, session))
+		goto error;
+	    }
+	  else if (session->opt->key_method == 2)
+	    {
+	      if (!key_method_2_read (buf, multi, session))
+		goto error;
+	    }
+	  else
+	    {
+	      ASSERT (0);
+	    }
+
+	  state_change = true;
+	  dmsg (D_TLS_DEBUG_MED, "STATE S_GOT_KEY");
+	  ks->state = S_GOT_KEY;
+	}
+
+      /* Write outgoing plaintext to TLS object */
+      buf = &ks->plaintext_write_buf;
+      if (buf->len)
+	{
+	  int status = key_state_write_plaintext (&ks->ks_ssl, buf);
+	  if (status == -1)
+	    {
+	      msg (D_TLS_ERRORS,
+		   "TLS ERROR: Outgoing Plaintext -> TLS object write error");
+	      goto error;
+	    }
+	  if (status == 1)
+	    {
+	      state_change = true;
+	      dmsg (D_TLS_DEBUG, "Outgoing Plaintext -> TLS");
+	    }
+	}
+
+      /* Outgoing Ciphertext to reliable buffer */
+      if (ks->state >= S_START)
+	{
+	  buf = reliable_get_buf_output_sequenced (ks->send_reliable);
+	  if (buf)
+	    {
+	      int status = key_state_read_ciphertext (&ks->ks_ssl, buf, PAYLOAD_SIZE_DYNAMIC (&multi->opt.frame));
+	      if (status == -1)
+		{
+		  msg (D_TLS_ERRORS,
+		       "TLS Error: Ciphertext -> reliable TCP/UDP transport read error");
 		  goto error;
 		}
 	      if (status == 1)
 		{
+		  reliable_mark_active_outgoing (ks->send_reliable, buf, P_CONTROL_V1);
+		  INCR_GENERATED;
 		  state_change = true;
-		  dmsg (D_TLS_DEBUG, "Outgoing Plaintext -> TLS");
-		}
-	    }
-
-	  /* Outgoing Ciphertext to reliable buffer */
-	  if (ks->state >= S_START)
-	    {
-	      buf = reliable_get_buf_output_sequenced (ks->send_reliable);
-	      if (buf)
-		{
-		  int status = key_state_read_ciphertext (&ks->ks_ssl, buf, PAYLOAD_SIZE_DYNAMIC (&multi->opt.frame));
-		  if (status == -1)
-		    {
-		      msg (D_TLS_ERRORS,
-			   "TLS Error: Ciphertext -> reliable TCP/UDP transport read error");
-		      goto error;
-		    }
-		  if (status == 1)
-		    {
-		      reliable_mark_active_outgoing (ks->send_reliable, buf, P_CONTROL_V1);
-		      INCR_GENERATED;
-		      state_change = true;
-		      dmsg (D_TLS_DEBUG, "Outgoing Ciphertext -> Reliable");
-		    }
+		  dmsg (D_TLS_DEBUG, "Outgoing Ciphertext -> Reliable");
 		}
 	    }
 	}
@@ -3061,23 +3088,6 @@ tls_pre_decrypt (struct tls_multi *multi,
 		  gc_free (&gc);
 		  return ret;
 		}
-#if 0 /* keys out of sync? */
-	      else
-		{
-		  dmsg (D_TLS_ERRORS, "TLS_PRE_DECRYPT: [%d] dken=%d rkid=%d lkid=%d auth=%d def=%d match=%d",
-			i,
-			DECRYPT_KEY_ENABLED (multi, ks),
-			key_id,
-			ks->key_id,
-			ks->authenticated,
-#ifdef ENABLE_DEF_AUTH
-			ks->auth_deferred,
-#else
-			-1,
-#endif
-			link_socket_actual_match (from, &ks->remote_addr));
-		}
-#endif
 	    }
 
 	  msg (D_TLS_ERRORS,
@@ -3748,6 +3758,28 @@ tls_peer_info_ncp_ver(const char *peer_info)
 	return ncp;
     }
   return 0;
+}
+
+bool
+tls_check_ncp_cipher_list(const char *list) {
+  bool unsupported_cipher_found = false;
+
+  ASSERT (list);
+
+  char * const tmp_ciphers = string_alloc (list, NULL);
+  const char *token = strtok (tmp_ciphers, ":");
+  while (token)
+    {
+      if (!cipher_kt_get (translate_cipher_name_from_openvpn (token)))
+	{
+	  msg (M_WARN, "Unsupported cipher in --ncp-ciphers: %s", token);
+	  unsupported_cipher_found = true;
+	}
+      token = strtok (NULL, ":");
+    }
+  free (tmp_ciphers);
+
+  return 0 < strlen(list) && !unsupported_cipher_found;
 }
 
 /*

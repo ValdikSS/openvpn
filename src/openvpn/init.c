@@ -1401,9 +1401,6 @@ do_init_tun (struct context *c)
 			   !c->options.ifconfig_nowarn,
 			   c->c2.es);
 
-  /* flag tunnel for IPv6 config if --tun-ipv6 is set */
-  c->c1.tuntap->ipv6 = c->options.tun_ipv6;
-
   init_tun_post (c->c1.tuntap,
 		 &c->c2.frame,
 		 &c->options.tuntap_options);
@@ -1420,9 +1417,6 @@ do_open_tun (struct context *c)
 {
   struct gc_arena gc = gc_new ();
   bool ret = false;
-
-  c->c2.ipv4_tun = (!c->options.tun_ipv6
-		    && is_dev_type (c->options.dev, c->options.dev_type, "tun"));
 
 #ifndef TARGET_ANDROID
   if (!c->c1.tuntap)
@@ -1961,16 +1955,17 @@ do_deferred_options (struct context *c, const unsigned int found)
 }
 
 /*
- * Possible hold on initialization
+ * Possible hold on initialization, holdtime is the
+ * time OpenVPN would wait without management
  */
 static bool
-do_hold (void)
+do_hold (int holdtime)
 {
 #ifdef ENABLE_MANAGEMENT
   if (management)
     {
       /* block until management hold is released */
-      if (management_hold (management))
+        if (management_hold (management, holdtime))
 	return true;
     }
 #endif
@@ -2028,8 +2023,10 @@ socket_restart_pause (struct context *c)
   c->persist.restart_sleep_seconds = 0;
 
   /* do managment hold on context restart, i.e. second, third, fourth, etc. initialization */
-  if (do_hold ())
+  if (do_hold (sec))
+  {
     sec = 0;
+  }
 
   if (sec)
     {
@@ -2047,7 +2044,7 @@ do_startup_pause (struct context *c)
   if (!c->first_time)
     socket_restart_pause (c);
   else
-    do_hold (); /* do management hold on first context initialization */
+    do_hold (0); /* do management hold on first context initialization */
 }
 
 /*
@@ -2141,7 +2138,6 @@ do_init_crypto_static (struct context *c, const unsigned int flags)
   if (options->replay)
     {
       packet_id_init (&c->c2.crypto_options.packet_id,
-		      link_socket_proto_connection_oriented (options->ce.proto),
 		      options->replay_window,
 		      options->replay_time,
 		      "STATIC", 0);
@@ -2267,7 +2263,7 @@ do_init_crypto_tls_c1 (struct context *c)
 
 	  /* Initialize key_type for tls-auth with auth only */
 	  CLEAR (c->c1.ks.tls_auth_key_type);
-	  if (options->authname)
+	  if (!streq (options->authname, "none"))
 	    {
 	      c->c1.ks.tls_auth_key_type.digest = md_kt_get (options->authname);
 	      c->c1.ks.tls_auth_key_type.hmac_length =
@@ -2432,6 +2428,8 @@ do_init_crypto_tls (struct context *c, const unsigned int flags)
   if (options->ccd_exclusive)
     to.client_config_dir_exclusive = options->client_config_dir;
   to.auth_user_pass_file = options->auth_user_pass_file;
+  to.auth_token_generate = options->auth_token_generate;
+  to.auth_token_lifetime = options->auth_token_lifetime;
 #endif
 
   to.x509_track = options->x509_track;
@@ -3449,7 +3447,7 @@ open_management (struct context *c)
 	    }
 
 	  /* initial management hold, called early, before first context initialization */
-	  do_hold ();
+	  do_hold (0);
 	  if (IS_SIG (c))
 	    {
 	      msg (M_WARN, "Signal received from management interface, exiting");

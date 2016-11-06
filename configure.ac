@@ -318,6 +318,7 @@ case "$host" in
 	*-*-solaris*)
 		AC_DEFINE([TARGET_SOLARIS], [1], [Are we running on Solaris?])
 		AC_DEFINE_UNQUOTED([TARGET_PREFIX], ["S"], [Target prefix])
+		CPPFLAGS="$CPPFLAGS -D_XPG4_2"
 		;;
 	*-*-openbsd*)
 		AC_DEFINE([TARGET_OPENBSD], [1], [Are we running on OpenBSD?])
@@ -1016,12 +1017,18 @@ fi
 dnl
 dnl Check for systemd
 dnl
-
+AM_CONDITIONAL([ENABLE_SYSTEMD], [test "${enable_systemd}" = "yes"])
 if test "$enable_systemd" = "yes" ; then
     PKG_CHECK_MODULES([libsystemd], [systemd libsystemd],
                       [],
                       [PKG_CHECK_MODULES([libsystemd], [libsystemd-daemon])]
                       )
+
+    PKG_CHECK_EXISTS( [libsystemd > 216],
+                     [AC_DEFINE([SYSTEMD_NEWER_THAN_216], [1],
+                           [systemd is newer than v216])]
+                    )
+
     AC_CHECK_HEADERS(systemd/sd-daemon.h,
        ,
        [

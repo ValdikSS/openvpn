@@ -251,7 +251,6 @@ struct options
   int ping_send_timeout;        /* Send a TCP/UDP ping to remote every n seconds */
   int ping_rec_timeout;         /* Expect a TCP/UDP ping from remote at least once every n seconds */
   bool ping_timer_remote;       /* Run ping timer only if we have a remote address */
-  bool tun_ipv6;                /* Build tun dev that supports IPv6 */
 
 # define PING_UNDEF   0
 # define PING_EXIT    1
@@ -443,6 +442,8 @@ struct options
 
   const char *auth_user_pass_verify_script;
   bool auth_user_pass_verify_script_via_file;
+  bool auth_token_generate;
+  unsigned int auth_token_lifetime;
 #if PORT_SHARE
   char *port_share_host;
   char *port_share_port;
@@ -600,6 +601,10 @@ struct options
 #endif
 
   struct pull_filter_list *pull_filter_list;
+
+  /* Useful when packets sent by openvpn itself are not subject
+     to the routing tables that would move packets into the tunnel. */
+  bool allow_recursive_routing;
 };
 
 #define streq(x, y) (!strcmp((x), (y)))

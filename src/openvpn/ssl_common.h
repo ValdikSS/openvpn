@@ -301,6 +301,9 @@ struct tls_options
   bool auth_user_pass_verify_script_via_file;
   const char *tmp_dir;
   const char *auth_user_pass_file;
+  bool auth_token_generate;     /**< Generate auth-tokens on successful user/pass auth,
+                                 *   set via options->auth_token_generate. */
+  unsigned int auth_token_lifetime;
 
   /* use the client-config-dir as a positive authenticator */
   const char *client_config_dir_exclusive;
@@ -360,6 +363,9 @@ struct tls_options
 /** @} name Index of key_state objects within a tls_session structure */
 /** @} addtogroup control_processor */
 
+#define AUTH_TOKEN_SIZE 32      /**< Size of server side generated auth tokens.
+                                 *   32 bytes == 256 bits
+                                 */
 
 /**
  * Security parameter state of a single session within a VPN tunnel.
@@ -534,6 +540,13 @@ struct tls_multi
   uint32_t peer_id;
   bool use_peer_id;
 
+  char *auth_token;      /**< If server sends a generated auth-token,
+                          *   this is the token to use for future
+                          *   user/pass authentications in this session.
+                          */
+  time_t auth_token_tstamp; /**< timestamp of the generated token */
+  bool auth_token_sent;  /**< If server uses --auth-gen-token and
+                          *   token has been sent to client */
   /*
    * Our session objects.
    */

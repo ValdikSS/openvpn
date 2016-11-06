@@ -139,8 +139,6 @@ struct tuntap
   bool did_ifconfig_ipv6_setup;
   bool did_ifconfig;
 
-  bool ipv6;
-
   bool persistent_if;		/* if existed before, keep on program end */
 
   struct tuntap_options options; /* options set on command line */
@@ -301,7 +299,7 @@ ifconfig_order(void)
 #elif defined(TARGET_NETBSD)
   return IFCONFIG_AFTER_TUN_OPEN;
 #elif defined(WIN32)
-  return IFCONFIG_BEFORE_TUN_OPEN;
+  return IFCONFIG_AFTER_TUN_OPEN;
 #elif defined(TARGET_ANDROID)
   return IFCONFIG_BEFORE_TUN_OPEN;
 #else

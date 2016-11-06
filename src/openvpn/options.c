@@ -175,7 +175,6 @@ static const char usage_message[] =
   "                  /dev/net/tun, /dev/tun, /dev/tap, etc.\n"
   "--lladdr hw     : Set the link layer address of the tap device.\n"
   "--topology t    : Set --dev tun topology: 'net30', 'p2p', or 'subnet'.\n"
-  "--tun-ipv6      : Build tun link capable of forwarding IPv6 traffic.\n"
 #ifdef ENABLE_IPROUTE
   "--iproute cmd   : Use this command instead of default " IPROUTE_PATH ".\n"
 #endif
@@ -445,6 +444,11 @@ static const char usage_message[] =
   "                  run command cmd to verify.  If method='via-env', pass\n"
   "                  user/pass via environment, if method='via-file', pass\n"
   "                  user/pass via temporary file.\n"
+  "--auth-gen-token  [lifetime] Generate a random authentication token which is pushed\n"
+  "                  to each client, replacing the password.  Usefull when\n"
+  "                  OTP based two-factor auth mechanisms are in use and\n"
+  "                  --reneg-* options are enabled. Optionally a lifetime in seconds\n"
+  "                  for generated tokens can be set.\n"
   "--opt-verify    : Clients that connect with options that are incompatible\n"
   "                  with those of the server will be disconnected.\n"
   "--auth-user-pass-optional : Allow connections by clients that don't\n"
@@ -504,6 +508,8 @@ static const char usage_message[] =
   "--connect-timeout n : when polling possible remote servers to connect to\n"
   "                  in a round-robin fashion, spend no more than n seconds\n"
   "                  waiting for a response before trying the next server.\n"
+  "--allow-recursive-routing : When this option is set, OpenVPN will not drop\n"
+  "                  incoming tun packets with same destination as host.\n"
 #endif
 #ifdef ENABLE_OCC
   "--explicit-exit-notify [n] : On exit/restart, send exit signal to\n"
@@ -860,6 +866,7 @@ init_options (struct options *o, const bool init_gc)
 #endif
   o->key_method = 2;
   o->tls_timeout = 2;
+  o->renegotiate_bytes = -1;
   o->renegotiate_seconds = 3600;
   o->handshake_window = 60;
   o->transition_window = 3600;
@@ -872,8 +879,10 @@ init_options (struct options *o, const bool init_gc)
   o->pkcs11_pin_cache_period = -1;
 #endif			/* ENABLE_PKCS11 */
 
-/* tmp is only used in P2MP server context */
+/* P2MP server context features */
 #if P2MP_SERVER
+  o->auth_token_generate = false;
+
   /* Set default --tmp-dir */
 #ifdef WIN32
   /* On Windows, find temp dir via enviroment variables */
@@ -886,6 +895,7 @@ init_options (struct options *o, const bool init_gc)
   }
 #endif /* WIN32 */
 #endif /* P2MP_SERVER */
+  o->allow_recursive_routing = false;
 }
 
 void
@@ -1271,6 +1281,8 @@ show_p2mp_parms (const struct options *o)
   SHOW_INT (max_routes_per_client);
   SHOW_STR (auth_user_pass_verify_script);
   SHOW_BOOL (auth_user_pass_verify_script_via_file);
+  SHOW_BOOL (auth_token_generate);
+  SHOW_INT (auth_token_lifetime);
 #if PORT_SHARE
   SHOW_STR (port_share_host);
   SHOW_STR (port_share_port);
@@ -1507,7 +1519,6 @@ show_settings (const struct options *o)
   SHOW_STR (dev_node);
   SHOW_STR (lladdr);
   SHOW_INT (topology);
-  SHOW_BOOL (tun_ipv6);
   SHOW_STR (ifconfig_local);
   SHOW_STR (ifconfig_remote_netmask);
   SHOW_BOOL (ifconfig_noexec);
@@ -2111,10 +2122,6 @@ options_postprocess_verify_ce (const struct options *options, const struct conne
                   options->connection_list->array[0]->remote)
           msg (M_USAGE, "<connection> cannot be used with --mode server");
 
-#if 0
-      if (options->tun_ipv6)
-	msg (M_USAGE, "--tun-ipv6 cannot be used with --mode server");
-#endif
       if (options->shaper)
 	msg (M_USAGE, "--shaper cannot be used with --mode server");
       if (options->inetd)
@@ -2138,9 +2145,8 @@ options_postprocess_verify_ce (const struct options *options, const struct conne
 	msg (M_USAGE, "--ifconfig-pool-persist must be used with --ifconfig-pool");
       if (options->ifconfig_ipv6_pool_defined && !options->ifconfig_ipv6_local )
 	msg (M_USAGE, "--ifconfig-ipv6-pool needs --ifconfig-ipv6");
-      if (options->ifconfig_ipv6_local && !options->tun_ipv6 )
-	msg (M_INFO, "Warning: --ifconfig-ipv6 without --tun-ipv6 will not do IPv6");
-
+      if (options->allow_recursive_routing)
+	msg (M_USAGE, "--allow-recursive-routing cannot be used with --mode server");
       if (options->auth_user_pass_file)
 	msg (M_USAGE, "--auth-user-pass cannot be used with --mode server (it should be used on the client side only)");
       if (options->ccd_exclusive && !options->client_config_dir)
@@ -2202,6 +2208,8 @@ options_postprocess_verify_ce (const struct options *options, const struct conne
              "tcp-nodelay in the server configuration instead.");
       if (options->auth_user_pass_verify_script)
 	msg (M_USAGE, "--auth-user-pass-verify requires --mode server");
+      if (options->auth_token_generate)
+	msg (M_USAGE, "--auth-gen-token requires --mode server");
 #if PORT_SHARE
       if (options->port_share_host || options->port_share_port)
 	msg (M_USAGE, "--port-share requires TCP server mode (--mode server --proto tcp-server)");
@@ -2216,14 +2224,14 @@ options_postprocess_verify_ce (const struct options *options, const struct conne
 
 #ifdef ENABLE_CRYPTO
 
+  if (options->ncp_enabled && !tls_check_ncp_cipher_list(options->ncp_ciphers))
+    {
+      msg (M_USAGE, "NCP cipher list contains unsupported ciphers.");
+    }
+
   /*
    * Check consistency of replay options
    */
-  if ((!proto_is_udp(ce->proto))
-      && (options->replay_window != defaults.replay_window
-	  || options->replay_time != defaults.replay_time))
-    msg (M_USAGE, "--replay-window only makes sense with --proto udp");
-
   if (!options->replay
       && (options->replay_window != defaults.replay_window
 	  || options->replay_time != defaults.replay_time))
@@ -3104,7 +3112,7 @@ options_string (const struct options *o,
   /* send tun_ipv6 only in peer2peer mode - in client/server mode, it
    * is usually pushed by the server, triggering a non-helpful warning
    */
-  if (o->tun_ipv6 && o->mode == MODE_POINT_TO_POINT && !PULL_DEFINED(o))
+  if (o->ifconfig_ipv6_local && o->mode == MODE_POINT_TO_POINT && !PULL_DEFINED(o))
     buf_printf (&out, ",tun-ipv6");
 
   /*
@@ -4608,7 +4616,7 @@ add_option (struct options *options,
   else if (streq (p[0], "tun-ipv6") && !p[1])
     {
       VERIFY_PERMISSION (OPT_P_UP);
-      options->tun_ipv6 = true;
+      msg (M_WARN, "Note: option tun-ipv6 is ignored because modern operating systems do not need special IPv6 tun handling anymore.");
     }
 #ifdef ENABLE_IPROUTE
   else if (streq (p[0], "iproute") && p[1] && !p[2])
@@ -5813,6 +5821,7 @@ add_option (struct options *options,
   else if (streq (p[0], "push-remove") && p[1] && !p[2])
     {
       VERIFY_PERMISSION (OPT_P_INSTANCE);
+      msg (D_PUSH, "PUSH_REMOVE '%s'", p[1]);
       push_remove_option (options,p[1]);
     }
   else if (streq (p[0], "ifconfig-pool") && p[1] && p[2] && !p[4])
@@ -5997,6 +6006,12 @@ add_option (struct options *options,
       set_user_script (options,
 		       &options->auth_user_pass_verify_script,
 		       p[1], "auth-user-pass-verify", true);
+    }
+  else if (streq (p[0], "auth-gen-token"))
+    {
+      VERIFY_PERMISSION (OPT_P_GENERAL);
+      options->auth_token_generate = true;
+      options->auth_token_lifetime = p[1] ? positive_atoi (p[1]) : 0;
     }
   else if (streq (p[0], "client-connect") && p[1])
     {
@@ -6685,19 +6700,11 @@ add_option (struct options *options,
     {
       VERIFY_PERMISSION (OPT_P_GENERAL);
       options->authname = p[1];
-      if (streq (options->authname, "none"))
-	{
-	  options->authname = NULL;
-	}
     }
   else if (streq (p[0], "cipher") && p[1] && !p[2])
     {
       VERIFY_PERMISSION (OPT_P_NCP);
       options->ciphername = p[1];
-      if (streq (options->ciphername, "none"))
-	{
-	  options->ciphername = NULL;
-	}
     }
   else if (streq (p[0], "ncp-ciphers") && p[1] && !p[2])
     {
@@ -7418,6 +7425,11 @@ add_option (struct options *options,
       options->keying_material_exporter_length = ekm_length;
     }
 #endif
+  else if (streq (p[0], "allow-recursive-routing") && !p[1])
+    {
+      VERIFY_PERMISSION (OPT_P_GENERAL);
+      options->allow_recursive_routing = true;
+    }
   else
     {
       int i;

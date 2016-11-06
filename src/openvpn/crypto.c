@@ -63,6 +63,9 @@
  * happen unless the frame parameters are wrong.
  */
 
+#define CRYPT_ERROR(format) \
+  do { msg (D_CRYPT_ERRORS, "%s: " format, error_prefix); goto error_exit; } while (false)
+
 static void
 openvpn_encrypt_aead (struct buffer *buf, struct buffer work,
 	 struct crypto_options *opt) {
@@ -679,20 +682,6 @@ openvpn_decrypt (struct buffer *buf, struct buffer work,
   return ret;
 }
 
-int
-memcmp_constant_time (const void *a, const void *b, size_t size) {
-  const uint8_t * a1 = a;
-  const uint8_t * b1 = b;
-  int ret = 0;
-  size_t i;
-
-  for (i = 0; i < size; i++) {
-      ret |= *a1++ ^ *b1++;
-  }
-
-  return ret;
-}
-
 void
 crypto_adjust_frame_parameters(struct frame *frame,
 			       const struct key_type* kt,
@@ -742,10 +731,18 @@ init_key_type (struct key_type *kt, const char *ciphername,
 {
   bool aead_cipher = false;
 
+  ASSERT(ciphername);
+  ASSERT(authname);
+
   CLEAR (*kt);
-  if (ciphername)
+  if (strcmp (ciphername, "none") != 0)
     {
       kt->cipher = cipher_kt_get (translate_cipher_name_from_openvpn(ciphername));
+      if (!kt->cipher)
+	{
+	  msg (M_FATAL, "Cipher %s not supported", ciphername);
+	}
+
       kt->cipher_length = cipher_kt_key_size (kt->cipher);
       if (keysize > 0 && keysize <= MAX_CIPHER_KEY_LENGTH)
 	kt->cipher_length = keysize;
@@ -768,7 +765,7 @@ init_key_type (struct key_type *kt, const char *ciphername,
       if (warn)
 	msg (M_WARN, "******* WARNING *******: null cipher specified, no encryption will be used");
     }
-  if (authname)
+  if (strcmp (authname, "none") != 0)
     {
       if (!aead_cipher) { /* Ignore auth for AEAD ciphers */
 	kt->digest = md_kt_get (authname);
@@ -812,8 +809,9 @@ init_key_ctx (struct key_ctx *ctx, struct key *key,
 	  cipher_kt_iv_size(kt->cipher));
       if (cipher_kt_block_size(kt->cipher) < 128/8)
 	{
-	  msg (M_WARN, "WARNING: this cipher's block size is less than 128 bit "
-	      "(%d bit).  Consider using a --cipher with a larger block size.",
+	  msg (M_WARN, "WARNING: INSECURE cipher with block size less than 128"
+	      " bit (%d bit).  This allows attacks like SWEET32.  Mitigate by "
+	      "using a --cipher with a larger block size (e.g. AES-256-CBC).",
 	      cipher_kt_block_size(kt->cipher)*8);
 	}
     }

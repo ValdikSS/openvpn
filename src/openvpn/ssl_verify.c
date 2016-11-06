@@ -39,6 +39,8 @@
 
 #include "misc.h"
 #include "manage.h"
+#include "otime.h"
+#include "base64.h"
 #include "ssl_verify.h"
 #include "ssl_verify_backend.h"
 
@@ -1137,6 +1139,63 @@ verify_user_pass(struct user_pass *up, struct tls_multi *multi,
   string_mod_remap_name (up->username, COMMON_NAME_CHAR_CLASS);
   string_mod (up->password, CC_PRINT, CC_CRLF, '_');
 
+  /* If server is configured with --auth-gen-token and we have an
+   * authentication token for this client, this authentication
+   * round will be done internally using the token instead of
+   * calling any external authentication modules.
+   */
+  if (session->opt->auth_token_generate && multi->auth_token_sent
+      && NULL != multi->auth_token)
+    {
+      unsigned int ssl_flags = session->opt->ssl_flags;
+
+      /* Ensure that the username has not changed */
+      if (!tls_lock_username(multi, up->username))
+        {
+          ks->authenticated = false;
+          goto done;
+        }
+
+      /* If auth-token lifetime has been enabled,
+       * ensure the token has not expired
+       */
+      if (session->opt->auth_token_lifetime > 0
+          && (multi->auth_token_tstamp + session->opt->auth_token_lifetime) < now)
+        {
+          msg (D_HANDSHAKE, "Auth-token for client expired\n");
+          ks->authenticated = false;
+          goto done;
+        }
+
+      /* The core authentication of the token itself */
+      if (memcmp_constant_time(multi->auth_token, up->password,
+                 strlen(multi->auth_token)) != 0)
+        {
+          memset (multi->auth_token, 0, AUTH_TOKEN_SIZE);
+          free (multi->auth_token);
+          multi->auth_token = NULL;
+          multi->auth_token_sent = false;
+          ks->authenticated = false;
+          tls_deauthenticate (multi);
+
+          msg (D_TLS_ERRORS, "TLS Auth Error: Auth-token verification "
+               "failed for username '%s' %s", up->username,
+               (ssl_flags & SSLF_USERNAME_AS_COMMON_NAME) ? "[CN SET]" : "");
+        }
+      else
+        {
+          ks->authenticated = true;
+
+          if (ssl_flags & SSLF_USERNAME_AS_COMMON_NAME)
+            set_common_name (session, up->username);
+          msg (D_HANDSHAKE, "TLS: Username/auth-token authentication "
+               "succeeded for username '%s' %s",
+               up->username,
+               (ssl_flags & SSLF_USERNAME_AS_COMMON_NAME) ? "[CN SET]" : "");
+        }
+      goto done;
+    }
+
   /* call plugin(s) and/or script */
 #ifdef MANAGEMENT_DEF_AUTH
   if (man_def_auth == KMDA_DEF)
@@ -1174,6 +1233,43 @@ verify_user_pass(struct user_pass *up, struct tls_multi *multi,
       if (man_def_auth != KMDA_UNDEF)
 	ks->auth_deferred = true;
 #endif
+
+      if ((session->opt->auth_token_generate) && (NULL == multi->auth_token))
+	{
+	  /* Server is configured with --auth-gen-token but no token has yet
+	   * been generated for this client.  Generate one and save it.
+	   */
+	  uint8_t tok[AUTH_TOKEN_SIZE];
+
+	  if (!rand_bytes(tok, AUTH_TOKEN_SIZE))
+	    {
+	      msg( M_FATAL, "Failed to get enough randomness for "
+                   "authentication token");
+	    }
+
+	  /* The token should be longer than the input when
+           * being base64 encoded
+           */
+	  if( openvpn_base64_encode(tok, AUTH_TOKEN_SIZE,
+                                    &multi->auth_token) < AUTH_TOKEN_SIZE)
+	    {
+	      msg(D_TLS_ERRORS, "BASE64 encoding of token failed. "
+                  "No auth-token will be activated now");
+	      if (multi->auth_token)
+		{
+		  memset (multi->auth_token, 0, AUTH_TOKEN_SIZE);
+		  free (multi->auth_token);
+		  multi->auth_token = NULL;
+		}
+	    }
+	  else
+	    {
+	      multi->auth_token_tstamp = now;
+	      dmsg (D_SHOW_KEYS, "Generated token for client: %s",
+                    multi->auth_token);
+	    }
+	}
+
       if ((session->opt->ssl_flags & SSLF_USERNAME_AS_COMMON_NAME))
 	set_common_name (session, up->username);
 #ifdef ENABLE_DEF_AUTH
@@ -1193,6 +1289,7 @@ verify_user_pass(struct user_pass *up, struct tls_multi *multi,
       msg (D_TLS_ERRORS, "TLS Auth Error: Auth Username/Password verification failed for peer");
     }
 
+ done:
   gc_free (&gc);
 }
 
