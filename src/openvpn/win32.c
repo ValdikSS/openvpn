@@ -1337,6 +1337,13 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
 
     status = add_block_dns_filters(&m_hEngineHandle, index, openvpnpath,
                                    block_dns_msg_handler);
+    if (status == 0)
+    {
+        status = set_interface_metric(index, AF_INET, BLOCK_DNS_IFACE_METRIC);
+        if (!status)
+            set_interface_metric(index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
+    }
+
     ret = (status == 0);
 
 out:
@@ -1345,19 +1352,24 @@ out:
 }
 
 bool
-win_wfp_uninit(const HANDLE msg_channel)
+win_wfp_uninit(const NET_IFINDEX index, const int metric, const HANDLE msg_channel)
 {
     dmsg(D_LOW, "Uninitializing WFP");
 
     if (msg_channel)
     {
         msg(D_LOW, "Using service to delete block dns filters");
-        win_block_dns_service(false, -1, msg_channel);
+        win_block_dns_service(false, index, msg_channel);
     }
     else
     {
         delete_block_dns_filters(m_hEngineHandle);
         m_hEngineHandle = NULL;
+        if (metric >= 0)
+        {
+            set_interface_metric(index, AF_INET, metric);
+            set_interface_metric(index, AF_INET6, metric);
+        }
     }
 
     return true;

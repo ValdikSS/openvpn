@@ -94,6 +94,11 @@ typedef enum {
 } undo_type_t;
 typedef list_item_t *undo_lists_t[_undo_type_max];
 
+typedef struct {
+    HANDLE engine;
+    int metric;
+} block_dns_data_t;
+
 
 static DWORD
 AddListItem(list_item_t **pfirst, LPVOID data)
@@ -885,6 +890,8 @@ static DWORD
 HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
 {
     DWORD err = 0;
+    int metric = 0;
+    block_dns_data_t *enginemetric;
     HANDLE engine = NULL;
     LPCWSTR exe_path;
 
@@ -901,16 +908,38 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
         err = add_block_dns_filters(&engine, msg->iface.index, exe_path, BlockDNSErrHandler);
         if (!err)
         {
-            err = AddListItem(&(*lists)[block_dns], engine);
+            enginemetric = malloc(sizeof(block_dns_data_t));
+            if (!enginemetric)
+                return ERROR_OUTOFMEMORY;
+            enginemetric->engine = engine;
+            metric = get_interface_metric(msg->iface.index, AF_INET);
+            if (metric >= 0)
+                enginemetric->metric = metric;
+            else
+                enginemetric->metric = -1;
+            err = AddListItem(&(*lists)[block_dns], enginemetric);
+            if (!err)
+            {
+                err = set_interface_metric(msg->iface.index, AF_INET, BLOCK_DNS_IFACE_METRIC);
+                if (!err)
+                    set_interface_metric(msg->iface.index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
+            }
         }
     }
     else
     {
-        engine = RemoveListItem(&(*lists)[block_dns], CmpEngine, NULL);
-        if (engine)
+        enginemetric = RemoveListItem(&(*lists)[block_dns], CmpEngine, NULL);
+        if (enginemetric)
         {
+            engine = enginemetric->engine;
             err = delete_block_dns_filters(engine);
             engine = NULL;
+            if (enginemetric->metric >= 0)
+            {
+                set_interface_metric(msg->iface.index, AF_INET, enginemetric->metric);
+                set_interface_metric(msg->iface.index, AF_INET6, enginemetric->metric);
+            }
+            free(enginemetric);
         }
         else
         {
