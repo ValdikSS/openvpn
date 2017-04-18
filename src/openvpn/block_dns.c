@@ -341,4 +341,29 @@ delete_block_dns_filters(HANDLE engine_handle)
     return err;
 }
 
+DWORD
+set_interface_metric(NET_IFINDEX index, ADDRESS_FAMILY family, ULONG metric)
+{
+    DWORD err = 0;
+    MIB_IPINTERFACE_ROW ipiface;
+    InitializeIpInterfaceEntry(&ipiface);
+    ipiface.Family = family;
+    ipiface.InterfaceIndex = index;
+    err = GetIpInterfaceEntry(&ipiface);
+    if (err == NO_ERROR)
+    {
+        if (family == AF_INET)
+            ipiface.SitePrefixLength = 0; // required for IPv4 as per MSDN
+        ipiface.Metric = metric;
+        if (metric == 0)
+            ipiface.UseAutomaticMetric = TRUE;
+        else
+            ipiface.UseAutomaticMetric = FALSE;
+        err = SetIpInterfaceEntry(&ipiface);
+        if (err == NO_ERROR)
+            return 0;
+    }
+    return err;
+}
+
 #endif /* ifdef _WIN32 */

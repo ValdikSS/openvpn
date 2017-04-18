@@ -1337,6 +1337,13 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
 
     status = add_block_dns_filters(&m_hEngineHandle, index, openvpnpath,
                                    block_dns_msg_handler);
+    if (status == 0)
+    {
+        status = set_interface_metric(index, AF_INET, BLOCK_DNS_IFACE_METRIC);
+        if (!status)
+            set_interface_metric(index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
+    }
+
     ret = (status == 0);
 
 out:

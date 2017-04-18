@@ -27,6 +27,8 @@
 #ifndef OPENVPN_BLOCK_DNS_H
 #define OPENVPN_BLOCK_DNS_H
 
+#define BLOCK_DNS_IFACE_METRIC 7
+
 typedef void (*block_dns_msg_handler_t) (DWORD err, const char *msg);
 
 DWORD
@@ -35,6 +37,9 @@ delete_block_dns_filters(HANDLE engine);
 DWORD
 add_block_dns_filters(HANDLE *engine, int iface_index, const WCHAR *exe_path,
                       block_dns_msg_handler_t msg_handler_callback);
+
+DWORD
+set_interface_metric(NET_IFINDEX index, ADDRESS_FAMILY family, ULONG metric);
 
 #endif
 #endif

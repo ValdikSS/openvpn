@@ -902,6 +902,12 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
         if (!err)
         {
             err = AddListItem(&(*lists)[block_dns], engine);
+            if (!err)
+            {
+                err = set_interface_metric(msg->iface.index, AF_INET, BLOCK_DNS_IFACE_METRIC);
+                if (!err)
+                    set_interface_metric(msg->iface.index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
+            }
         }
     }
     else
