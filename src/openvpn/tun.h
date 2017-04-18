@@ -175,6 +175,9 @@ struct tuntap
     /* Windows adapter index for TAP-Windows adapter,
      * ~0 if undefined */
     DWORD adapter_index;
+    /* Windows adapter metric. Store it to restore later
+     * when removing DNS block */
+    DWORD adapter_metric;
 
     int standby_iter;
 #else  /* ifdef _WIN32 */

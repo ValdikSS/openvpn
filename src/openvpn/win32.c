@@ -1257,7 +1257,7 @@ win_get_tempdir()
 }
 
 static bool
-win_block_dns_service(bool add, int index, const HANDLE pipe)
+win_block_dns_service(bool add, int index, int metric, const HANDLE pipe)
 {
     DWORD len;
     bool ret = false;
@@ -1270,7 +1270,7 @@ win_block_dns_service(bool add, int index, const HANDLE pipe)
             sizeof(block_dns_message_t),
             0
         },
-        .iface = { .index = index, .name = "" }
+        .iface = { .index = index, .name = "", .metric = metric }
     };
 
     if (!WriteFile(pipe, &data, sizeof(data), &len, NULL)
@@ -1324,7 +1324,7 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
     if (msg_channel)
     {
         dmsg(D_LOW, "Using service to add block dns filters");
-        ret = win_block_dns_service(true, index, msg_channel);
+        ret = win_block_dns_service(true, index, BLOCK_DNS_IFACE_METRIC, msg_channel);
         goto out;
     }
 
@@ -1337,6 +1337,13 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
 
     status = add_block_dns_filters(&m_hEngineHandle, index, openvpnpath,
                                    block_dns_msg_handler);
+    if (status == 0)
+    {
+        status = set_interface_metric(index, AF_INET, BLOCK_DNS_IFACE_METRIC);
+        if (!status)
+            set_interface_metric(index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
+    }
+
     ret = (status == 0);
 
 out:
@@ -1345,22 +1352,66 @@ out:
 }
 
 bool
-win_wfp_uninit(const HANDLE msg_channel)
+win_wfp_uninit(const NET_IFINDEX index, const ULONG metric, const HANDLE msg_channel)
 {
     dmsg(D_LOW, "Uninitializing WFP");
 
     if (msg_channel)
     {
         msg(D_LOW, "Using service to delete block dns filters");
-        win_block_dns_service(false, -1, msg_channel);
+        win_block_dns_service(false, index, metric, msg_channel);
     }
     else
     {
         delete_block_dns_filters(m_hEngineHandle);
         m_hEngineHandle = NULL;
+        set_interface_metric(index, AF_INET, metric);
+        set_interface_metric(index, AF_INET6, metric);
     }
 
     return true;
+}
+
+DWORD
+get_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family)
+{
+    DWORD err = 0;
+    MIB_IPINTERFACE_ROW ipiface;
+    InitializeIpInterfaceEntry(&ipiface);
+    ipiface.Family = family;
+    ipiface.InterfaceIndex = index;
+    err = GetIpInterfaceEntry(&ipiface);
+    if (err == NO_ERROR) {
+        if (ipiface.UseAutomaticMetric)
+            return 0;
+        return ipiface.Metric;
+    }
+    return -err;
+}
+
+DWORD
+set_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family, const ULONG metric)
+{
+    DWORD err = 0;
+    MIB_IPINTERFACE_ROW ipiface;
+    InitializeIpInterfaceEntry(&ipiface);
+    ipiface.Family = family;
+    ipiface.InterfaceIndex = index;
+    err = GetIpInterfaceEntry(&ipiface);
+    if (err == NO_ERROR)
+    {
+        if (family == AF_INET)
+            ipiface.SitePrefixLength = 0; // required for IPv4 as per MSDN
+        ipiface.Metric = metric;
+        if (metric == 0)
+            ipiface.UseAutomaticMetric = TRUE;
+        else
+            ipiface.UseAutomaticMetric = FALSE;
+        err = SetIpInterfaceEntry(&ipiface);
+        if (err == NO_ERROR)
+            return 0;
+    }
+    return -err;
 }
 
 int

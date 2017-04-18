@@ -882,6 +882,31 @@ CmpEngine(LPVOID item, LPVOID any)
 }
 
 static DWORD
+set_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family, const ULONG metric)
+{
+    DWORD err = 0;
+    MIB_IPINTERFACE_ROW ipiface;
+    InitializeIpInterfaceEntry(&ipiface);
+    ipiface.Family = family;
+    ipiface.InterfaceIndex = index;
+    err = GetIpInterfaceEntry(&ipiface);
+    if (err == NO_ERROR)
+    {
+        if (family == AF_INET)
+            ipiface.SitePrefixLength = 0; // required for IPv4 as per MSDN
+        ipiface.Metric = metric;
+        if (metric == 0)
+            ipiface.UseAutomaticMetric = TRUE;
+        else
+            ipiface.UseAutomaticMetric = FALSE;
+        err = SetIpInterfaceEntry(&ipiface);
+        if (err == NO_ERROR)
+            return 0;
+    }
+    return -err;
+}
+
+static DWORD
 HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
 {
     DWORD err = 0;
@@ -902,6 +927,12 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
         if (!err)
         {
             err = AddListItem(&(*lists)[block_dns], engine);
+            if (!err)
+            {
+                err = set_interface_metric(msg->iface.index, AF_INET, BLOCK_DNS_IFACE_METRIC);
+                if (!err)
+                    set_interface_metric(msg->iface.index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
+            }
         }
     }
     else
@@ -911,6 +942,8 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
         {
             err = delete_block_dns_filters(engine);
             engine = NULL;
+            set_interface_metric(msg->iface.index, AF_INET, msg->iface.metric);
+            set_interface_metric(msg->iface.index, AF_INET6, msg->iface.metric);
         }
         else
         {

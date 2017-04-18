@@ -54,6 +54,7 @@ typedef union {
 
 typedef struct {
     int index;
+    int metric;
     char name[256];
 } interface_t;
 
