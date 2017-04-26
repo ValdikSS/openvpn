@@ -295,9 +295,6 @@ bool win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel);
 
 bool win_wfp_uninit(const NET_IFINDEX index, const ULONG metric, const HANDLE msg_channel);
 
-DWORD get_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family);
-DWORD set_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family, const ULONG metric);
-
 #define WIN_XP 0
 #define WIN_VISTA 1
 #define WIN_7 2

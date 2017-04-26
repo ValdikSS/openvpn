@@ -35,6 +35,7 @@
 #endif
 
 #include "win32.h"
+#include "block_dns.h"
 #include "init.h"
 #include "sig.h"
 #include "occ.h"

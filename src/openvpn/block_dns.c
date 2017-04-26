@@ -341,4 +341,53 @@ delete_block_dns_filters(HANDLE engine_handle)
     return err;
 }
 
+int
+get_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family)
+{
+    DWORD err = 0;
+    MIB_IPINTERFACE_ROW ipiface;
+    InitializeIpInterfaceEntry(&ipiface);
+    ipiface.Family = family;
+    ipiface.InterfaceIndex = index;
+    err = GetIpInterfaceEntry(&ipiface);
+    if (err == NO_ERROR) {
+        if (ipiface.UseAutomaticMetric)
+            return 0;
+        return ipiface.Metric;
+    }
+    /* Metric if returned value >= 0, error if < 0 */
+    return -err;
+}
+
+DWORD
+set_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family, const ULONG metric)
+{
+    /* Every interface defaults to automatic metric. Automatic metric is based on
+     * port speed and some other parameters. TAP adapter usually has metric 35 because
+     * it reports port speed of 100 Mbit/s, while 1 Gbit/s adapters have lower metric.
+     * 
+     * 0 is not a valid metric value (minimal is 1) that's why it's used as an option
+     * for automatic metric. */
+    DWORD err = 0;
+    MIB_IPINTERFACE_ROW ipiface;
+    InitializeIpInterfaceEntry(&ipiface);
+    ipiface.Family = family;
+    ipiface.InterfaceIndex = index;
+    err = GetIpInterfaceEntry(&ipiface);
+    if (err == NO_ERROR)
+    {
+        if (family == AF_INET)
+            ipiface.SitePrefixLength = 0; // required for IPv4 as per MSDN
+        ipiface.Metric = metric;
+        if (metric == 0)
+            ipiface.UseAutomaticMetric = TRUE;
+        else
+            ipiface.UseAutomaticMetric = FALSE;
+        err = SetIpInterfaceEntry(&ipiface);
+        if (err == NO_ERROR)
+            return 0;
+    }
+    return err;
+}
+
 #endif /* ifdef _WIN32 */
