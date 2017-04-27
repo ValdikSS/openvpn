@@ -177,7 +177,7 @@ struct tuntap
     DWORD adapter_index;
     /* Windows adapter metric. Store it to restore later
      * when removing DNS block */
-    DWORD adapter_metric;
+    int adapter_metric;
 
     int standby_iter;
 #else  /* ifdef _WIN32 */

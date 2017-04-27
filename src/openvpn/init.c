@@ -1670,8 +1670,8 @@ do_open_tun(struct context *c)
     {
         c->c1.tuntap->adapter_metric = get_interface_metric(c->c1.tuntap->adapter_index, AF_INET);
         if (c->c1.tuntap->adapter_metric < 0) {
-            msg(M_WARN, "Error getting interface metric, using automatic metric");
-            c->c1.tuntap->adapter_metric = 0;
+            msg(M_WARN, "Error getting interface metric, will not restore it");
+            c->c1.tuntap->adapter_metric = -1;
         }
         dmsg(D_LOW, "Blocking outside DNS");
         if (!win_wfp_block_dns(c->c1.tuntap->adapter_index, c->options.msg_channel))
@@ -1735,8 +1735,8 @@ else
     {
         c->c1.tuntap->adapter_metric = get_interface_metric(c->c1.tuntap->adapter_index, AF_INET);
         if (c->c1.tuntap->adapter_metric < 0) {
-            msg(M_WARN, "Error getting interface metric, using automatic metric");
-            c->c1.tuntap->adapter_metric = 0;
+            msg(M_WARN, "Error getting interface metric, will not restore it");
+            c->c1.tuntap->adapter_metric = -1;
         }
         dmsg(D_LOW, "Blocking outside DNS");
         if (!win_wfp_block_dns(c->c1.tuntap->adapter_index, c->options.msg_channel))
@@ -1777,7 +1777,7 @@ do_close_tun(struct context *c, bool force)
         const char *tuntap_actual = string_alloc(c->c1.tuntap->actual_name, &gc);
 #ifdef _WIN32
         DWORD adapter_index = c->c1.tuntap->adapter_index;
-        DWORD adapter_metric = c->c1.tuntap->adapter_metric;
+        int adapter_metric = c->c1.tuntap->adapter_metric;
 #endif
         const in_addr_t local = c->c1.tuntap->local;
         const in_addr_t remote_netmask = c->c1.tuntap->remote_netmask;

@@ -1257,7 +1257,7 @@ win_get_tempdir()
 }
 
 static bool
-win_block_dns_service(bool add, int index, int metric, const HANDLE pipe)
+win_block_dns_service(bool add, int index, const HANDLE pipe)
 {
     DWORD len;
     bool ret = false;
@@ -1324,7 +1324,7 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
     if (msg_channel)
     {
         dmsg(D_LOW, "Using service to add block dns filters");
-        ret = win_block_dns_service(true, index, BLOCK_DNS_IFACE_METRIC, msg_channel);
+        ret = win_block_dns_service(true, index, msg_channel);
         goto out;
     }
 
@@ -1352,21 +1352,24 @@ out:
 }
 
 bool
-win_wfp_uninit(const NET_IFINDEX index, const ULONG metric, const HANDLE msg_channel)
+win_wfp_uninit(const NET_IFINDEX index, const int metric, const HANDLE msg_channel)
 {
     dmsg(D_LOW, "Uninitializing WFP");
 
     if (msg_channel)
     {
         msg(D_LOW, "Using service to delete block dns filters");
-        win_block_dns_service(false, index, metric, msg_channel);
+        win_block_dns_service(false, index, msg_channel);
     }
     else
     {
         delete_block_dns_filters(m_hEngineHandle);
         m_hEngineHandle = NULL;
-        set_interface_metric(index, AF_INET, metric);
-        set_interface_metric(index, AF_INET6, metric);
+        if (metric >= 0)
+        {
+            set_interface_metric(index, AF_INET, metric);
+            set_interface_metric(index, AF_INET6, metric);
+        }
     }
 
     return true;
