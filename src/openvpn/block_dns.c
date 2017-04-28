@@ -350,7 +350,8 @@ get_interface_metric(const NET_IFINDEX index, const ADDRESS_FAMILY family)
     ipiface.Family = family;
     ipiface.InterfaceIndex = index;
     err = GetIpInterfaceEntry(&ipiface);
-    if (err == NO_ERROR) {
+    if (err == NO_ERROR)
+    {
         if (ipiface.UseAutomaticMetric)
             return 0;
         return ipiface.Metric;

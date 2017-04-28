@@ -35,7 +35,6 @@
 #endif
 
 #include "win32.h"
-#include "block_dns.h"
 #include "init.h"
 #include "sig.h"
 #include "occ.h"
@@ -1668,11 +1667,6 @@ do_open_tun(struct context *c)
 #if defined(_WIN32)
     if (c->options.block_outside_dns)
     {
-        c->c1.tuntap->adapter_metric = get_interface_metric(c->c1.tuntap->adapter_index, AF_INET);
-        if (c->c1.tuntap->adapter_metric < 0) {
-            msg(M_WARN, "Error getting interface metric, will not restore it");
-            c->c1.tuntap->adapter_metric = -1;
-        }
         dmsg(D_LOW, "Blocking outside DNS");
         if (!win_wfp_block_dns(c->c1.tuntap->adapter_index, c->options.msg_channel))
         {
@@ -1733,11 +1727,6 @@ else
 #if defined(_WIN32)
     if (c->options.block_outside_dns)
     {
-        c->c1.tuntap->adapter_metric = get_interface_metric(c->c1.tuntap->adapter_index, AF_INET);
-        if (c->c1.tuntap->adapter_metric < 0) {
-            msg(M_WARN, "Error getting interface metric, will not restore it");
-            c->c1.tuntap->adapter_metric = -1;
-        }
         dmsg(D_LOW, "Blocking outside DNS");
         if (!win_wfp_block_dns(c->c1.tuntap->adapter_index, c->options.msg_channel))
         {
@@ -1777,7 +1766,6 @@ do_close_tun(struct context *c, bool force)
         const char *tuntap_actual = string_alloc(c->c1.tuntap->actual_name, &gc);
 #ifdef _WIN32
         DWORD adapter_index = c->c1.tuntap->adapter_index;
-        int adapter_metric = c->c1.tuntap->adapter_metric;
 #endif
         const in_addr_t local = c->c1.tuntap->local;
         const in_addr_t remote_netmask = c->c1.tuntap->remote_netmask;
@@ -1849,7 +1837,7 @@ do_close_tun(struct context *c, bool force)
 #if defined(_WIN32)
             if (c->options.block_outside_dns)
             {
-                if (!win_wfp_uninit(adapter_index, adapter_metric, c->options.msg_channel))
+                if (!win_wfp_uninit(adapter_index, c->options.msg_channel))
                 {
                     msg(M_FATAL, "Uninitialising WFP failed!");
                 }
@@ -1889,7 +1877,7 @@ do_close_tun(struct context *c, bool force)
 #if defined(_WIN32)
             if (c->options.block_outside_dns)
             {
-                if (!win_wfp_uninit(adapter_index, adapter_metric, c->options.msg_channel))
+                if (!win_wfp_uninit(adapter_index, c->options.msg_channel))
                 {
                     msg(M_FATAL, "Uninitialising WFP failed!");
                 }

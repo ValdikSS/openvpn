@@ -61,6 +61,11 @@
 static HANDLE m_hEngineHandle = NULL; /* GLOBAL */
 
 /*
+ * TAP adapter original metric value
+ */
+static int tap_metric = -1; /* GLOBAL */
+
+/*
  * Windows internal socket API state (opaque).
  */
 static struct WSAData wsa_state; /* GLOBAL */
@@ -1339,6 +1344,12 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
                                    block_dns_msg_handler);
     if (status == 0)
     {
+        tap_metric = get_interface_metric(index, AF_INET);
+        if (tap_metric < 0)
+        {
+            /* error, should not restore metric */
+            tap_metric = -1;
+        }
         status = set_interface_metric(index, AF_INET, BLOCK_DNS_IFACE_METRIC);
         if (!status)
             set_interface_metric(index, AF_INET6, BLOCK_DNS_IFACE_METRIC);
@@ -1352,7 +1363,7 @@ out:
 }
 
 bool
-win_wfp_uninit(const NET_IFINDEX index, const int metric, const HANDLE msg_channel)
+win_wfp_uninit(const NET_IFINDEX index, const HANDLE msg_channel)
 {
     dmsg(D_LOW, "Uninitializing WFP");
 
@@ -1365,10 +1376,10 @@ win_wfp_uninit(const NET_IFINDEX index, const int metric, const HANDLE msg_chann
     {
         delete_block_dns_filters(m_hEngineHandle);
         m_hEngineHandle = NULL;
-        if (metric >= 0)
+        if (tap_metric >= 0)
         {
-            set_interface_metric(index, AF_INET, metric);
-            set_interface_metric(index, AF_INET6, metric);
+            set_interface_metric(index, AF_INET, tap_metric);
+            set_interface_metric(index, AF_INET6, tap_metric);
         }
     }
 
