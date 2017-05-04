@@ -96,6 +96,7 @@ typedef list_item_t *undo_lists_t[_undo_type_max];
 
 typedef struct {
     HANDLE engine;
+    int index;
     int metric;
 } block_dns_data_t;
 
@@ -891,7 +892,7 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
 {
     DWORD err = 0;
     int metric = 0;
-    block_dns_data_t *enginemetric;
+    block_dns_data_t *interface_data;
     HANDLE engine = NULL;
     LPCWSTR exe_path;
 
@@ -908,16 +909,17 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
         err = add_block_dns_filters(&engine, msg->iface.index, exe_path, BlockDNSErrHandler);
         if (!err)
         {
-            enginemetric = malloc(sizeof(block_dns_data_t));
-            if (!enginemetric)
+            interface_data = malloc(sizeof(block_dns_data_t));
+            if (!interface_data)
                 return ERROR_OUTOFMEMORY;
-            enginemetric->engine = engine;
+            interface_data->engine = engine;
+            interface_data->index = msg->iface.index;
             metric = get_interface_metric(msg->iface.index, AF_INET);
             if (metric >= 0)
-                enginemetric->metric = metric;
+                interface_data->metric = metric;
             else
-                enginemetric->metric = -1;
-            err = AddListItem(&(*lists)[block_dns], enginemetric);
+                interface_data->metric = -1;
+            err = AddListItem(&(*lists)[block_dns], interface_data);
             if (!err)
             {
                 err = set_interface_metric(msg->iface.index, AF_INET, BLOCK_DNS_IFACE_METRIC);
@@ -928,18 +930,18 @@ HandleBlockDNSMessage(const block_dns_message_t *msg, undo_lists_t *lists)
     }
     else
     {
-        enginemetric = RemoveListItem(&(*lists)[block_dns], CmpEngine, NULL);
-        if (enginemetric)
+        interface_data = RemoveListItem(&(*lists)[block_dns], CmpEngine, NULL);
+        if (interface_data)
         {
-            engine = enginemetric->engine;
+            engine = interface_data->engine;
             err = delete_block_dns_filters(engine);
             engine = NULL;
-            if (enginemetric->metric >= 0)
+            if (interface_data->metric >= 0)
             {
-                set_interface_metric(msg->iface.index, AF_INET, enginemetric->metric);
-                set_interface_metric(msg->iface.index, AF_INET6, enginemetric->metric);
+                set_interface_metric(msg->iface.index, AF_INET, interface_data->metric);
+                set_interface_metric(msg->iface.index, AF_INET6, interface_data->metric);
             }
-            free(enginemetric);
+            free(interface_data);
         }
         else
         {
@@ -1379,7 +1381,9 @@ Undo(undo_lists_t *lists)
                     break;
 
                 case block_dns:
-                    delete_block_dns_filters(item->data);
+                    delete_block_dns_filters(((block_dns_data_t*)(item->data))->engine);
+                    set_interface_metric(((block_dns_data_t*)(item->data))->index, AF_INET, ((block_dns_data_t*)(item->data))->metric);
+                    set_interface_metric(((block_dns_data_t*)(item->data))->index, AF_INET6, ((block_dns_data_t*)(item->data))->metric);
                     item->data = NULL;
                     break;
             }
